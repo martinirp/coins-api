@@ -96,22 +96,26 @@ function runScraper() {
           console.log('[*] A sessao expirou. Iniciando fluxo de renovação automática...');
           const loginOk = renewSession();
           if (loginOk) {
-            // Tenta raspar novamente após login bem sucedido
+            console.log('[+] Sessao renovada! Re-executando scraper...');
             const retryStdout = execSync(`"${PYTHON_CMD}" "${scraperPath}"`, { cwd: __dirname });
             const retryResult = JSON.parse(retryStdout.toString().trim());
             if (retryResult.status === 'success') {
+              console.log(`[+] Scraper OK (apos renovacao): ${retryResult.transactions.length} transacao(oes).`);
               processScraperTransactions(retryResult.transactions);
               return resolve({ status: 'success', transactions: retryResult.transactions });
             }
           }
+          console.error('[-] Falha ao renovar sessao.');
           return resolve({ error: 'session_expired' });
         }
         
         if (result.status === 'success') {
+          console.log(`[+] Scraper OK: ${result.transactions.length} transacao(oes) no historico.`);
           processScraperTransactions(result.transactions);
           return resolve({ status: 'success', transactions: result.transactions });
         }
         
+        console.error(`[-] Scraper retornou erro: ${result.error}`);
         return resolve({ error: result.error || 'Erro desconhecido' });
       } catch (err) {
         console.error(`[-] Erro ao processar saida do scraper: ${err.message}. Saida bruta: ${stdout}`);
