@@ -63,7 +63,7 @@ def start_xvfb():
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )
-        time.sleep(1.5)  # Aguarda o Xvfb inicializar
+        time.sleep(0.5)  # Aguarda o Xvfb inicializar
         os.environ["DISPLAY"] = DISPLAY_NUM
         print(f"[+] Xvfb iniciado no display {DISPLAY_NUM}")
         return True
@@ -99,7 +99,7 @@ try:
         chromium_arg="--no-sandbox,--disable-dev-shm-usage,--disable-gpu,--window-size=1280,800"
     ) as sb:
         print("[*] Acessando a pagina do Tibia...")
-        sb.uc_open_with_reconnect(url, reconnect_time=6)
+        sb.uc_open_with_reconnect(url, reconnect_time=4)
 
         print("[*] Verificando se o Cloudflare Turnstile apareceu...")
         try:
@@ -112,27 +112,25 @@ try:
         try:
             sb.wait_for_element('input[name="loginemail"]', timeout=40)
             print("[+] Pagina de login carregada com sucesso!")
-            sb.save_screenshot("sb_step1_login_ready.png")
         except Exception as e:
-            sb.save_screenshot("sb_step1_error.png")
+            sb.save_screenshot("sb_error_login_page.png")
             print("[-] Timeout: Nao foi possivel carregar a tela de login. Verifique sb_step1_error.png")
             raise e
 
         print("[*] Preenchendo e-mail e senha...")
         sb.type('input[name="loginemail"]', email)
         sb.type('input[name="loginpassword"]', password + '\n')
-        sb.save_screenshot("sb_step2_credentials_submitted.png")
 
         # Aguarda o campo de TOTP ou a conclusão do login
         is_totp_requested = False
-        for _ in range(50):
+        for _ in range(30):
             page_source = sb.get_page_source()
             if 'name="totp"' in page_source or "totp" in page_source:
                 is_totp_requested = True
                 break
             if "Logout" in page_source:
                 break
-            sb.sleep(0.2)
+            sb.sleep(0.1)
 
         if is_totp_requested:
             print("[*] 2FA (TOTP) solicitado! Gerando token...")
@@ -141,14 +139,12 @@ try:
             totp_code = totp.now()
             print(f"[*] Token gerado: {totp_code}. Preenchendo...")
             sb.type('input[name="totp"]', totp_code + '\n')
-            sb.save_screenshot("sb_step3_totp_submitted.png")
 
-            for _ in range(50):
+            for _ in range(30):
                 if "Logout" in sb.get_page_source():
                     break
-                sb.sleep(0.2)
+                sb.sleep(0.1)
 
-        sb.save_screenshot("sb_step4_final.png")
         page_source = sb.get_page_source()
 
         if "Logout" in page_source:
@@ -159,11 +155,9 @@ try:
             sb.open(history_url)
 
             try:
-                sb.wait_for_element('table', timeout=8)
+                sb.wait_for_element('table', timeout=5)
             except Exception:
                 pass
-
-            sb.save_screenshot("sb_step5_coins_history.png")
 
             cookies = sb.get_cookies()
             cookie_parts = [f"{c['name']}={c['value']}" for c in cookies]
@@ -175,7 +169,8 @@ try:
 
             print(f"[+] Cookies de sessao salvos com sucesso em {cookie_file_path}!")
         else:
-            print("[-] Falha no login. Verifique sb_step4_final.png para entender o que aconteceu.")
+            sb.save_screenshot("sb_error_final.png")
+            print("[-] Falha no login. Verifique sb_error_final.png para entender o que aconteceu.")
             sys.exit(1)
 
 finally:
