@@ -13,7 +13,7 @@ Este microserviço automatiza o login (contornando proteções como o Cloudflare
 2. **Python 3**: Certifique-se de que o Python e o `pip` estão adicionados ao PATH do sistema.
 3. **Dependências do Python**:
    ```bash
-   pip install seleniumbase pyotp curl-cffi beautifulsoup4
+   pip install seleniumbase pyotp requests beautifulsoup4
    ```
 4. **Dependências do Node**:
    No diretório do projeto, execute:
@@ -29,7 +29,7 @@ Este microserviço automatiza o login (contornando proteções como o Cloudflare
    ```
 2. **Instalar dependências do Python**:
    ```bash
-   pip3 install pyotp beautifulsoup4 curl-cffi seleniumbase --break-system-packages
+   pip3 install pyotp beautifulsoup4 requests seleniumbase --break-system-packages
    ```
 3. **Instalar dependências do Node**:
    ```bash
