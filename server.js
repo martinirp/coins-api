@@ -79,7 +79,10 @@ function runScraper() {
     const scraperPath = path.join(__dirname, 'scraper.py');
     console.log(`[*] Buscando dados no site do Tibia... (${PYTHON_CMD})`);
     
-    exec(`"${PYTHON_CMD}" "${scraperPath}"`, { cwd: __dirname }, (error, stdout, stderr) => {
+    exec(`"${PYTHON_CMD}" "${scraperPath}"`, { cwd: __dirname, timeout: 30000 }, (error, stdout, stderr) => {
+      if (stderr && stderr.trim()) {
+        console.error(`[scraper stderr] ${stderr.trim()}`);
+      }
       isChecking = false;
       lastCheckTime = new Date().toISOString();
       
