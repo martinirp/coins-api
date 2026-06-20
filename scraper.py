@@ -3,7 +3,7 @@ import sys
 import json
 import hashlib
 import re
-from curl_cffi import requests
+import requests
 from bs4 import BeautifulSoup
 
 cookie_path = "session_cookie.txt"
@@ -25,8 +25,9 @@ headers = {
 
 try:
     print("[scraper] Iniciando requisicao HTTP...", flush=True)
-    response = requests.get(url, headers=headers, impersonate="chrome120", timeout=20)
+    response = requests.get(url, headers=headers, timeout=20)
     print(f"[scraper] Resposta recebida: HTTP {response.status_code}", flush=True)
+    if response.status_code != 200:
         print(json.dumps({"error": f"HTTP {response.status_code}"}), flush=True)
         sys.exit(1)
         
