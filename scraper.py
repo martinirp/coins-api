@@ -16,7 +16,7 @@ if not os.path.exists(cookie_path):
 with open(cookie_path, "r", encoding="utf-8") as f:
     cookie_str = f.read().strip()
 
-print(f"[scraper] Cookie carregado ({len(cookie_str)} chars)", flush=True)
+print(f"[scraper] Cookie carregado ({len(cookie_str)} chars)", file=sys.stderr, flush=True)
 
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -24,9 +24,9 @@ headers = {
 }
 
 try:
-    print("[scraper] Iniciando requisicao HTTP...", flush=True)
+    print("[scraper] Iniciando requisicao HTTP...", file=sys.stderr, flush=True)
     response = requests.get(url, headers=headers, timeout=20)
-    print(f"[scraper] Resposta recebida: HTTP {response.status_code}", flush=True)
+    print(f"[scraper] Resposta recebida: HTTP {response.status_code}", file=sys.stderr, flush=True)
     if response.status_code != 200:
         print(json.dumps({"error": f"HTTP {response.status_code}"}), flush=True)
         sys.exit(1)
