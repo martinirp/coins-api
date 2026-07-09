@@ -1,0 +1,28 @@
+{
+  "name": "tibia-coins-api",
+  "version": "1.0.0",
+  "description": "API REST e Monitor de Histórico de Tibia Coins",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "chrome-paths": "^1.0.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.22.2",
+    "got-scraping": "^4.2.1",
+    "otplib": "^13.4.1",
+    "puppeteer": "^24.43.1",
+    "puppeteer-core": "^24.43.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "author": "Martinirp",
+  "license": "MIT"
+}
