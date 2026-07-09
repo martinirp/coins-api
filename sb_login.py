@@ -80,7 +80,11 @@ with SB(uc=True, headless=True, browser="chrome", chromium_arg="--no-sandbox,--d
         print("[*] 2FA (TOTP) solicitado! Gerando token...")
         clean_secret = totp_secret.replace(" ", "").upper()
         totp = pyotp.TOTP(clean_secret)
-        totp_code = totp.now()
+        offset_hours = float(env.get('TIME_OFFSET_HOURS', '0'))
+        if offset_hours != 0:
+            print(f"[*] Aplicando ajuste de relogio de {offset_hours} horas para o TOTP...")
+        adjusted_time = datetime.datetime.now() + datetime.timedelta(hours=offset_hours)
+        totp_code = totp.at(adjusted_time)
         print(f"[*] Token gerado: {totp_code}. Preenchendo...")
         # Enviamos o token seguido de \n para submeter pressionando Enter
         sb.type('input[name="totp"]', totp_code + '\n')

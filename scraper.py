@@ -22,7 +22,7 @@ headers = {
 }
 
 try:
-    response = requests.get(url, headers=headers, impersonate="chrome120")
+    response = requests.get(url, headers=headers, impersonate="chrome120", timeout=15)
     if response.status_code != 200:
         print(json.dumps({"error": f"HTTP {response.status_code}"}), flush=True)
         sys.exit(1)
