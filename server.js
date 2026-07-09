@@ -1,3 +1,4 @@
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
@@ -6,9 +7,9 @@ const { exec, execSync } = require('child_process');
 const os = require('os');
 
 const app = express();
-const PORT = 5001;
-const POLL_INTERVAL_SECONDS = 60;
-const PYTHON_CMD = os.platform() === 'win32' ? 'python' : 'python3';
+const PORT = process.env.PORT || 5001;
+const POLL_INTERVAL_SECONDS = parseInt(process.env.POLL_INTERVAL_SECONDS || '60', 10);
+const PYTHON_CMD = process.env.PYTHON_CMD || (os.platform() === 'win32' ? 'python' : 'python3');
 
 app.use(cors());
 app.use(express.json());
@@ -45,14 +46,14 @@ function savePayments(payments) {
 
 // Renovar a sessão usando o SeleniumBase UC Mode
 function renewSession() {
-  const scriptPath = path.join(__dirname, 'cli.py');
-  console.log(`[*] Executando login automatico via Python...`);
+  const scriptPath = path.join(__dirname, 'sb_login.py');
+  console.log(`[*] Executando login automatico via sb_login.py... (${PYTHON_CMD})`);
   try {
-    const stdout = execSync(`${PYTHON_CMD} "${scriptPath}" login`, { cwd: __dirname, encoding: 'utf8' });
+    const stdout = execSync(`"${PYTHON_CMD}" "${scriptPath}"`, { cwd: __dirname, encoding: 'utf8' });
     console.log(stdout);
     return stdout.includes('Cookies de sessao salvos com sucesso');
   } catch (err) {
-    console.error(`[-] Erro ao executar login via Python: ${err.message}`);
+    console.error(`[-] Erro ao executar sb_login.py: ${err.message}`);
     return false;
   }
 }
@@ -75,15 +76,15 @@ function runScraper() {
       }
     }
 
-    const scraperPath = path.join(__dirname, 'cli.py');
-    console.log(`[*] Buscando dados no site do Tibia via Python...`);
+    const scraperPath = path.join(__dirname, 'scraper.py');
+    console.log(`[*] Buscando dados no site do Tibia... (${PYTHON_CMD})`);
     
-    exec(`${PYTHON_CMD} "${scraperPath}" scrape`, { cwd: __dirname }, (error, stdout, stderr) => {
+    exec(`"${PYTHON_CMD}" "${scraperPath}"`, { cwd: __dirname }, (error, stdout, stderr) => {
       isChecking = false;
       lastCheckTime = new Date().toISOString();
       
       if (error) {
-        console.error(`[-] Erro ao executar scraper via Python: ${error.message}`);
+        console.error(`[-] Erro ao executar scraper.py: ${error.message}`);
         return resolve({ error: error.message });
       }
       
@@ -96,7 +97,7 @@ function runScraper() {
           const loginOk = renewSession();
           if (loginOk) {
             // Tenta raspar novamente após login bem sucedido
-            const retryStdout = execSync(`${PYTHON_CMD} "${scraperPath}" scrape`, { cwd: __dirname });
+            const retryStdout = execSync(`"${PYTHON_CMD}" "${scraperPath}"`, { cwd: __dirname });
             const retryResult = JSON.parse(retryStdout.toString().trim());
             if (retryResult.status === 'success') {
               processScraperTransactions(retryResult.transactions);
@@ -274,91 +275,6 @@ app.get('/api/status', (req, res) => {
     sessionValid: sessionExists,
     lastBackgroundCheck: lastCheckTime,
     checkingActive: POLL_INTERVAL_SECONDS > 0
-  });
-});
-
-// 5. POST /api/remove-trusted-devices - Remove todos os Trusted Devices de cada conta
-// Body: { "accounts": [{ "name": "...", "email": "...", "password": "...", "totp_secret": "..." }] }
-app.post('/api/remove-trusted-devices', (req, res) => {
-  const { accounts: accountsList } = req.body;
-
-  if (!accountsList || !Array.isArray(accountsList) || accountsList.length === 0) {
-    return res.status(400).json({ error: 'Campo "accounts" é obrigatório e deve ser uma lista não vazia.' });
-  }
-
-  // Filtra apenas contas com email e senha preenchidos
-  const validAccounts = accountsList.filter(a => a.email && a.password);
-  if (validAccounts.length === 0) {
-    return res.status(400).json({ error: 'Nenhuma conta válida (com email e senha) encontrada na lista.' });
-  }
-
-  const scriptPath = path.join(__dirname, 'remove_trusted_devices.py');
-  console.log(`[*] Iniciando remoção de Trusted Devices para ${validAccounts.length} conta(s) via Python...`);
-
-  const inputJson = JSON.stringify(validAccounts);
-
-  // Workers = valor do campo max_workers enviado pelo cliente (padrão 3)
-  const maxWorkers = String(req.body.max_workers || 3);
-
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Transfer-Encoding', 'chunked');
-
-  const child = require('child_process').spawn(PYTHON_CMD, [scriptPath, '--workers', maxWorkers], {
-    cwd: __dirname,
-    stdio: ['pipe', 'pipe', 'pipe']
-  });
-
-  // Envia as contas via stdin
-  child.stdin.write(inputJson);
-  child.stdin.end();
-
-  let stdoutBuffer = '';
-  let stderrBuffer = '';
-
-  child.stdout.on('data', (data) => {
-    const text = data.toString();
-    stdoutBuffer += text;
-    // Loga no servidor em tempo real
-    process.stdout.write(text);
-  });
-
-  child.stderr.on('data', (data) => {
-    const text = data.toString();
-    stderrBuffer += text;
-    process.stderr.write(text);
-  });
-
-  child.on('close', (code) => {
-    console.log(`[*] remove_trusted_devices.py finalizado com código: ${code}`);
-
-    // Tenta extrair o JSON de resultado da última linha do stdout
-    const lines = stdoutBuffer.trim().split('\n');
-    let result = null;
-    for (let i = lines.length - 1; i >= 0; i--) {
-      try {
-        result = JSON.parse(lines[i].trim());
-        break;
-      } catch (_) {}
-    }
-
-    if (result) {
-      return res.json(result);
-    }
-
-    // Se não encontrou JSON, retorna o log bruto
-    res.json({
-      status: code === 0 ? 'finished' : 'error',
-      exitCode: code,
-      log: stdoutBuffer,
-      stderr: stderrBuffer
-    });
-  });
-
-  child.on('error', (err) => {
-    console.error(`[-] Erro ao executar remove_trusted_devices.py: ${err.message}`);
-    if (!res.headersSent) {
-      res.status(500).json({ error: err.message });
-    }
   });
 });
 
