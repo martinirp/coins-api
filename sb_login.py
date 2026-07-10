@@ -96,10 +96,13 @@ try:
         uc=True,
         headless=False,
         browser="chrome",
-        chromium_arg="--no-sandbox,--disable-dev-shm-usage,--disable-gpu,--window-size=1280,800"
+        # --use-gl=swiftshader: habilita WebGL via software (sem GPU real).
+        # Sem isso o --disable-gpu corta o WebGL e o Cloudflare detecta o bot.
+        chromium_arg="--no-sandbox,--disable-dev-shm-usage,--use-gl=swiftshader,--ignore-gpu-blocklist,--window-size=1280,800"
     ) as sb:
         print("[*] Acessando a pagina do Tibia...")
-        sb.uc_open_with_reconnect(url, reconnect_time=4)
+        # reconnect_time=8: dá mais tempo ao Cloudflare para auto-verificar o browser
+        sb.uc_open_with_reconnect(url, reconnect_time=8)
 
         print("[*] Verificando se o Cloudflare Turnstile apareceu...")
         try:
@@ -107,6 +110,13 @@ try:
             print("[+] Captcha clicado ou nao encontrado (seguindo adiante)...")
         except Exception as e:
             print(f"[*] Nota do Captcha: {e}")
+
+        # Aguarda o Cloudflare auto-verificar (pode levar ate 10s)
+        print("[*] Aguardando Cloudflare auto-verificar...")
+        for _ in range(20):
+            if 'loginemail' in sb.get_page_source():
+                break
+            sb.sleep(0.5)
 
         print("[*] Aguardando o carregamento dos campos de login...")
         try:
