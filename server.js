@@ -10,6 +10,32 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 const POLL_INTERVAL_SECONDS = parseInt(process.env.POLL_INTERVAL_SECONDS || '60', 10);
 const PYTHON_CMD = process.env.PYTHON_CMD || (os.platform() === 'win32' ? 'python' : 'python3');
+const IS_LINUX = os.platform() !== 'win32';
+
+// No Linux, injeta DISPLAY=:99 para o Selenium/Chrome conseguir abrir em modo headless com GUI
+function getPythonEnv() {
+  if (!IS_LINUX) return process.env;
+  return { ...process.env, DISPLAY: process.env.DISPLAY || ':99' };
+}
+
+// Garante que o Xvfb (display virtual) esteja rodando no Linux antes de iniciar o Selenium
+function ensureXvfb() {
+  if (!IS_LINUX) return;
+  try {
+    execSync('pgrep Xvfb', { stdio: 'ignore' });
+    console.log('[*] Xvfb ja esta rodando.');
+  } catch {
+    console.log('[*] Iniciando Xvfb no display :99...');
+    try {
+      exec('Xvfb :99 -screen 0 1280x1024x24 &', { env: process.env });
+      // Aguarda um momento para o Xvfb inicializar
+      execSync('sleep 1');
+      console.log('[+] Xvfb iniciado com sucesso.');
+    } catch (err) {
+      console.warn('[!] Nao foi possivel iniciar o Xvfb. Se o login travar, instale com: apt-get install -y xvfb');
+    }
+  }
+}
 
 app.use(cors());
 app.use(express.json());
@@ -46,10 +72,12 @@ function savePayments(payments) {
 
 // Renovar a sessão usando o SeleniumBase UC Mode
 function renewSession() {
+  ensureXvfb();
   const scriptPath = path.join(__dirname, 'sb_login.py');
   console.log(`[*] Executando login automatico via sb_login.py... (${PYTHON_CMD})`);
+  if (IS_LINUX) console.log(`[*] Linux detectado. Usando DISPLAY=${getPythonEnv().DISPLAY}`);
   try {
-    const stdout = execSync(`"${PYTHON_CMD}" "${scriptPath}"`, { cwd: __dirname, encoding: 'utf8', timeout: 60000 });
+    const stdout = execSync(`"${PYTHON_CMD}" "${scriptPath}"`, { cwd: __dirname, encoding: 'utf8', timeout: 120000, env: getPythonEnv() });
     console.log(stdout);
     return stdout.includes('Cookies de sessao salvos com sucesso');
   } catch (err) {
