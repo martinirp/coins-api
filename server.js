@@ -49,11 +49,13 @@ function renewSession() {
   const scriptPath = path.join(__dirname, 'sb_login.py');
   console.log(`[*] Executando login automatico via sb_login.py... (${PYTHON_CMD})`);
   try {
-    const stdout = execSync(`"${PYTHON_CMD}" "${scriptPath}"`, { cwd: __dirname, encoding: 'utf8' });
+    const stdout = execSync(`"${PYTHON_CMD}" "${scriptPath}"`, { cwd: __dirname, encoding: 'utf8', timeout: 60000 });
     console.log(stdout);
     return stdout.includes('Cookies de sessao salvos com sucesso');
   } catch (err) {
     console.error(`[-] Erro ao executar sb_login.py: ${err.message}`);
+    if (err.stdout) console.log(`[-] STDOUT: ${err.stdout}`);
+    if (err.stderr) console.error(`[-] STDERR: ${err.stderr}`);
     return false;
   }
 }
@@ -79,12 +81,14 @@ function runScraper() {
     const scraperPath = path.join(__dirname, 'scraper.py');
     console.log(`[*] Buscando dados no site do Tibia... (${PYTHON_CMD})`);
     
-    exec(`"${PYTHON_CMD}" "${scraperPath}"`, { cwd: __dirname }, (error, stdout, stderr) => {
+    // Define um timeout de 30 segundos (30000 ms) para evitar que o processo trave para sempre
+    exec(`"${PYTHON_CMD}" "${scraperPath}"`, { cwd: __dirname, timeout: 30000, killSignal: 'SIGTERM' }, (error, stdout, stderr) => {
       isChecking = false;
       lastCheckTime = new Date().toISOString();
       
       if (error) {
         console.error(`[-] Erro ao executar scraper.py: ${error.message}`);
+        if (stderr) console.error(`[-] STDERR: ${stderr}`);
         return resolve({ error: error.message });
       }
       
