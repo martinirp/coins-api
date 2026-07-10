@@ -17,3 +17,11 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
+
+# App Database
+payments.json
+
+# Debug / Logs
+debug_scraper.html
+*.png
+downloaded_files/
