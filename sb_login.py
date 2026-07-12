@@ -98,7 +98,8 @@ try:
         browser="chrome",
         # --use-gl=swiftshader: habilita WebGL via software (sem GPU real).
         # Sem isso o --disable-gpu corta o WebGL e o Cloudflare detecta o bot.
-        chromium_arg="--no-sandbox,--disable-dev-shm-usage,--use-gl=swiftshader,--ignore-gpu-blocklist,--window-size=1280,800,--disable-blink-features=AutomationControlled"
+        chromium_arg="--no-sandbox,--disable-dev-shm-usage,--use-gl=swiftshader,--ignore-gpu-blocklist,--window-size=1280,800,--disable-blink-features=AutomationControlled,--disable-features=IsolateOrigins,site-per-process",
+        agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     ) as sb:
         print("[*] Acessando a pagina do Tibia...")
         # reconnect_time=10: dá mais tempo ao Cloudflare para auto-verificar o browser
