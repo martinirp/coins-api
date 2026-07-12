@@ -123,14 +123,32 @@ try:
                 break
             sb.sleep(0.5)
 
-        print("[*] Aguardando o carregamento dos campos de login...")
-        try:
-            sb.wait_for_element('input[name="loginemail"]', timeout=40)
-            print("[+] Pagina de login carregada com sucesso!")
-        except Exception as e:
+        print("[*] Aguardando o carregamento dos campos de login (com tentativas de reload)...")
+        login_loaded = False
+        for attempt in range(3):
+            try:
+                sb.wait_for_element('input[name="loginemail"]', timeout=15)
+                print("[+] Pagina de login carregada com sucesso!")
+                login_loaded = True
+                break
+            except Exception:
+                print(f"[*] Tentativa {attempt + 1} falhou. Cloudflare pode estar travado. Atualizando pagina...")
+                sb.save_screenshot(f"sb_cf_retry_{attempt}.png")
+                sb.refresh()
+                sb.sleep(5)
+                try:
+                    if hasattr(sb, 'uc_gui_handle_captcha'):
+                        sb.uc_gui_handle_captcha()
+                    else:
+                        sb.uc_gui_click_captcha()
+                except Exception:
+                    pass
+                sb.sleep(3)
+                
+        if not login_loaded:
             sb.save_screenshot("sb_error_login_page.png")
-            print("[-] Timeout: Nao foi possivel carregar a tela de login. Verifique sb_step1_error.png")
-            raise e
+            print("[-] Timeout: Nao foi possivel carregar a tela de login. Verifique as prints sb_cf_retry_X.png")
+            raise Exception("Element {input[name='loginemail']} was not present after retries!")
 
         print("[*] Preenchendo e-mail e senha...")
         sb.type('input[name="loginemail"]', email)
