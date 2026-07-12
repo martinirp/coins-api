@@ -2,20 +2,25 @@ import os
 import sys
 import json
 import time
+import shutil
+import platform
 import subprocess
 import pyotp
 from seleniumbase import SB
 
-# ---------------------------------------------------------------------------
-# Adaptado para rodar em proot-distro Debian dentro do Termux.
-# O headless=True falha no Cloudflare Turnstile neste ambiente.
-# A solução é usar Xvfb (display virtual) + headless=False.
-# ---------------------------------------------------------------------------
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def resolve_env_path(env_path):
+    if os.path.isabs(env_path):
+        return env_path
+    return os.path.join(SCRIPT_DIR, env_path)
 
 def load_env(env_path):
     env_vars = {}
-    if os.path.exists(env_path):
-        with open(env_path, 'r', encoding='utf-8') as f:
+    resolved_path = resolve_env_path(env_path)
+    if os.path.exists(resolved_path):
+        with open(resolved_path, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith('#'):
@@ -40,67 +45,85 @@ if not email or not password or not totp_secret:
 
 url = "https://www.tibia.com/account/?subtopic=accountmanagement"
 
-# ---------------------------------------------------------------------------
-# Inicia o Xvfb (display virtual) para simular uma tela sem monitor físico.
-# Isso é obrigatório no proot-distro Debian — sem isso o Chrome não abre
-# em modo não-headless e o headless=True não passa pelo Turnstile.
-# ---------------------------------------------------------------------------
-DISPLAY_NUM = ":99"
+is_windows = os.name == 'nt'
 xvfb_proc = None
+xvfb_ok = False
 
-def start_xvfb():
-    global xvfb_proc
-    try:
-        # Mata qualquer Xvfb anterior preso no :99
-        subprocess.run(["pkill", "-f", f"Xvfb {DISPLAY_NUM}"], capture_output=True)
-        time.sleep(0.5)
-        # Remove o lock file se existir
-        lock_file = f"/tmp/.X{DISPLAY_NUM[1:]}-lock"
-        if os.path.exists(lock_file):
-            os.remove(lock_file)
-        xvfb_proc = subprocess.Popen(
-            ["Xvfb", DISPLAY_NUM, "-screen", "0", "1280x800x24", "-ac"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-        time.sleep(0.5)  # Aguarda o Xvfb inicializar
-        os.environ["DISPLAY"] = DISPLAY_NUM
-        print(f"[+] Xvfb iniciado no display {DISPLAY_NUM}")
-        return True
-    except FileNotFoundError:
-        print("[-] Xvfb não encontrado. Instale com: apt install xvfb")
-        return False
-    except Exception as e:
-        print(f"[-] Falha ao iniciar Xvfb: {e}")
-        return False
+if not is_windows:
+    DISPLAY_NUM = os.environ.get("DISPLAY", ":99")
+    if not DISPLAY_NUM.startswith(":"):
+        DISPLAY_NUM = ":99"
+        
+    def start_xvfb():
+        global xvfb_proc
+        if os.environ.get("DISPLAY"):
+            print(f"[*] DISPLAY já configurado: {os.environ.get('DISPLAY')}")
+            return True
+        try:
+            subprocess.run(["pkill", "-f", f"Xvfb {DISPLAY_NUM}"], capture_output=True)
+            time.sleep(0.5)
+            lock_file = f"/tmp/.X{DISPLAY_NUM[1:]}-lock"
+            if os.path.exists(lock_file):
+                os.remove(lock_file)
+            xvfb_proc = subprocess.Popen(
+                ["Xvfb", DISPLAY_NUM, "-screen", "0", "1280x800x24", "-ac"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            time.sleep(0.5)
+            os.environ["DISPLAY"] = DISPLAY_NUM
+            print(f"[+] Xvfb iniciado no display {DISPLAY_NUM}")
+            return True
+        except FileNotFoundError:
+            print("[-] Xvfb não encontrado. Instale com: apt install xvfb")
+            return False
+        except Exception as e:
+            print(f"[-] Falha ao iniciar Xvfb: {e}")
+            return False
 
-def stop_xvfb():
-    global xvfb_proc
-    if xvfb_proc:
-        xvfb_proc.terminate()
-        xvfb_proc = None
-        print("[*] Xvfb encerrado.")
+    def stop_xvfb():
+        global xvfb_proc
+        if xvfb_proc:
+            xvfb_proc.terminate()
+            xvfb_proc = None
+            print("[*] Xvfb encerrado.")
 
-# --- Inicia o display virtual ---
-xvfb_ok = start_xvfb()
-if not xvfb_ok:
-    print("[-] Continuando sem Xvfb — pode falhar no Cloudflare.")
+    xvfb_ok = start_xvfb()
+    if not xvfb_ok:
+        print("[-] Continuando sem Xvfb — pode falhar no Cloudflare.")
+else:
+    def stop_xvfb():
+        pass
+
+browser_binary = None
+for candidate in ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser"]:
+    if shutil.which(candidate):
+        browser_binary = candidate
+        break
+if browser_binary:
+    print(f"[*] Browser detectado para SeleniumBase: {browser_binary}")
+else:
+    print("[-] Nenhum browser Chrome/Chromium detectado. Verifique se o Chromium está instalado no Debian do PRoot.")
 
 print(f"[*] Iniciando SeleniumBase UC Mode para {url}...")
 
 try:
-    # headless=False é essencial para o UC Mode passar pelo Cloudflare Turnstile.
-    # O Xvfb garante que não seja necessário um monitor físico.
-    # --no-sandbox e --disable-dev-shm-usage são obrigatórios no proot-distro.
-    with SB(
-        uc=True,
-        headless=False,
-        browser="chrome",
-        # --use-gl=swiftshader: habilita WebGL via software (sem GPU real).
-        # Sem isso o --disable-gpu corta o WebGL e o Cloudflare detecta o bot.
-        chromium_arg="--no-sandbox,--disable-dev-shm-usage,--use-gl=swiftshader,--ignore-gpu-blocklist,--window-size=1280,800,--disable-blink-features=AutomationControlled,--disable-features=IsolateOrigins,site-per-process",
-        agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    ) as sb:
+    if is_windows:
+        sb_context = SB(
+            uc=True,
+            headless=False,
+            browser="chrome"
+        )
+    else:
+        sb_context = SB(
+            uc=True,
+            headless=not xvfb_ok,
+            browser="chrome",
+            chromium_arg="--no-sandbox,--disable-dev-shm-usage,--use-gl=swiftshader,--ignore-gpu-blocklist,--window-size=1280,800,--disable-blink-features=AutomationControlled,--disable-features=IsolateOrigins,site-per-process",
+            agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+        
+    with sb_context as sb:
         print("[*] Acessando a pagina do Tibia...")
         # reconnect_time=10: dá mais tempo ao Cloudflare para auto-verificar o browser
         sb.uc_open_with_reconnect(url, reconnect_time=10)
@@ -197,7 +220,7 @@ try:
             cookie_parts = [f"{c['name']}={c['value']}" for c in cookies]
             cookie_string = "; ".join(cookie_parts)
 
-            cookie_file_path = "session_cookie.txt"
+            cookie_file_path = os.path.join(SCRIPT_DIR, "session_cookie.txt")
             with open(cookie_file_path, "w", encoding="utf-8") as f:
                 f.write(cookie_string)
 
@@ -207,5 +230,7 @@ try:
             print("[-] Falha no login. Verifique sb_error_final.png para entender o que aconteceu.")
             sys.exit(1)
 
+except Exception as e:
+    print(f"[-] Error: {e}")
 finally:
     stop_xvfb()
