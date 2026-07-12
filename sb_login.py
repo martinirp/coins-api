@@ -73,6 +73,17 @@ if not is_windows:
             time.sleep(0.5)
             os.environ["DISPLAY"] = DISPLAY_NUM
             print(f"[+] Xvfb iniciado no display {DISPLAY_NUM}")
+            
+            if shutil.which("x11vnc"):
+                subprocess.Popen(
+                    ["x11vnc", "-display", DISPLAY_NUM, "-nopw", "-listen", "0.0.0.0", "-xkb", "-forever"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                print("[+] Stream VNC iniciado na porta 5900 (Acesso via IP:5900)")
+            else:
+                print("[-] x11vnc nao encontrado. Instale com: apt install x11vnc")
+                
             return True
         except FileNotFoundError:
             print("[-] Xvfb não encontrado. Instale com: apt install xvfb")
