@@ -8,6 +8,11 @@ import subprocess
 import pyotp
 from seleniumbase import SB
 
+try:
+    from turnstile_solver import solve as turnstile_solve
+except ImportError:
+    turnstile_solve = None
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -140,14 +145,32 @@ try:
         sb.uc_open_with_reconnect(url, reconnect_time=10)
 
         print("[*] Verificando se o Cloudflare Turnstile apareceu...")
-        try:
-            if hasattr(sb, 'uc_gui_handle_captcha'):
-                sb.uc_gui_handle_captcha()
-            else:
-                sb.uc_gui_click_captcha()
-            print("[+] Captcha tratado (seguindo adiante)...")
-        except Exception as e:
-            print(f"[*] Nota do Captcha: {e}")
+        if turnstile_solve:
+            print("[*] Usando turnstile_solver...")
+            try:
+                success = turnstile_solve(
+                    sb.driver,
+                    detect_timeout=5,
+                    solve_timeout=30,
+                    interval=1,
+                    verify=True,
+                    click_method="cdp",
+                    theme="auto",
+                    enable_logging=True
+                )
+                print(f"[*] Resultado do turnstile_solver: {success}")
+            except Exception as e:
+                print(f"[-] Erro no turnstile_solver: {e}")
+        else:
+            print("[-] turnstile_solver não instalado. Rode: pip install turnstile_solver opencv-python")
+            try:
+                if hasattr(sb, 'uc_gui_handle_captcha'):
+                    sb.uc_gui_handle_captcha()
+                else:
+                    sb.uc_gui_click_captcha()
+                print("[+] Captcha tratado (método nativo)...")
+            except Exception as e:
+                print(f"[*] Nota do Captcha nativo: {e}")
             
         sb.sleep(2)
 
@@ -171,13 +194,19 @@ try:
                 sb.save_screenshot(f"sb_cf_retry_{attempt}.png")
                 sb.refresh()
                 sb.sleep(5)
-                try:
-                    if hasattr(sb, 'uc_gui_handle_captcha'):
-                        sb.uc_gui_handle_captcha()
-                    else:
-                        sb.uc_gui_click_captcha()
-                except Exception:
-                    pass
+                if turnstile_solve:
+                    try:
+                        turnstile_solve(sb.driver, detect_timeout=2, solve_timeout=15, verify=True, click_method="cdp", enable_logging=True)
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        if hasattr(sb, 'uc_gui_handle_captcha'):
+                            sb.uc_gui_handle_captcha()
+                        else:
+                            sb.uc_gui_click_captcha()
+                    except Exception:
+                        pass
                 sb.sleep(3)
                 
         if not login_loaded:
