@@ -4,6 +4,7 @@ import json
 import hashlib
 import re
 import requests
+import cloudscraper
 from bs4 import BeautifulSoup
 
 cookie_path = "session_cookie.txt"
@@ -25,7 +26,8 @@ headers = {
 
 try:
     print("[scraper] Iniciando requisicao HTTP...", file=sys.stderr, flush=True)
-    response = requests.get(url, headers=headers, timeout=20)
+    scraper = cloudscraper.create_scraper()
+    response = scraper.get(url, headers=headers, timeout=20)
     print(f"[scraper] Resposta recebida: HTTP {response.status_code}", file=sys.stderr, flush=True)
     if response.status_code != 200:
         print(json.dumps({"error": f"HTTP {response.status_code}"}), flush=True)

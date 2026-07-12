@@ -98,18 +98,23 @@ try:
         browser="chrome",
         # --use-gl=swiftshader: habilita WebGL via software (sem GPU real).
         # Sem isso o --disable-gpu corta o WebGL e o Cloudflare detecta o bot.
-        chromium_arg="--no-sandbox,--disable-dev-shm-usage,--use-gl=swiftshader,--ignore-gpu-blocklist,--window-size=1280,800"
+        chromium_arg="--no-sandbox,--disable-dev-shm-usage,--use-gl=swiftshader,--ignore-gpu-blocklist,--window-size=1280,800,--disable-blink-features=AutomationControlled"
     ) as sb:
         print("[*] Acessando a pagina do Tibia...")
-        # reconnect_time=8: dá mais tempo ao Cloudflare para auto-verificar o browser
-        sb.uc_open_with_reconnect(url, reconnect_time=8)
+        # reconnect_time=10: dá mais tempo ao Cloudflare para auto-verificar o browser
+        sb.uc_open_with_reconnect(url, reconnect_time=10)
 
         print("[*] Verificando se o Cloudflare Turnstile apareceu...")
         try:
-            sb.uc_gui_click_captcha()
-            print("[+] Captcha clicado ou nao encontrado (seguindo adiante)...")
+            if hasattr(sb, 'uc_gui_handle_captcha'):
+                sb.uc_gui_handle_captcha()
+            else:
+                sb.uc_gui_click_captcha()
+            print("[+] Captcha tratado (seguindo adiante)...")
         except Exception as e:
             print(f"[*] Nota do Captcha: {e}")
+            
+        sb.sleep(2)
 
         # Aguarda o Cloudflare auto-verificar (pode levar ate 10s)
         print("[*] Aguardando Cloudflare auto-verificar...")
