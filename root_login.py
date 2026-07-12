@@ -32,7 +32,12 @@ def load_env(env_path):
 
 def run_su(cmd):
     """Executa comando via Magisk SU"""
-    return subprocess.run(["su", "-c", cmd], capture_output=True, text=True)
+    su_cmd = "su"
+    if os.system("which tsu > /dev/null 2>&1") == 0:
+        su_cmd = "tsu"
+    elif os.path.exists("/system/bin/su"):
+        su_cmd = "/system/bin/su"
+    return subprocess.run([su_cmd, "-c", cmd], capture_output=True, text=True)
 
 def setup_tunnel():
     print("[*] Criando túnel direto com o Google Chrome via socat...")
