@@ -8,10 +8,7 @@ import subprocess
 import pyotp
 from seleniumbase import SB
 
-try:
-    from turnstile_solver import solve as turnstile_solve
-except ImportError:
-    turnstile_solve = None
+
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -145,6 +142,11 @@ try:
         sb.uc_open_with_reconnect(url, reconnect_time=10)
 
         print("[*] Verificando se o Cloudflare Turnstile apareceu...")
+        try:
+            from turnstile_solver import solve as turnstile_solve
+        except ImportError:
+            turnstile_solve = None
+
         if turnstile_solve:
             print("[*] Usando turnstile_solver...")
             try:
