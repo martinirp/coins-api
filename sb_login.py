@@ -157,7 +157,7 @@ try:
         msg_id = 0
         
         def send_cmd(method, params=None):
-            nonlocal msg_id
+            global msg_id
             msg_id += 1
             msg = {"id": msg_id, "method": method, "params": params or {}}
             ws.send(json.dumps(msg))
