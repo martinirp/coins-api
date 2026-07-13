@@ -129,13 +129,13 @@ try:
         # MODO TERMUX (APK Nativo Tibia Solver)
         print("[*] Ambiente Termux detectado. Conectando ao Aplicativo Nativo (SolverApp) via porta 8080...")
         
-        API_URL = "http://127.0.0.1:8080"
+        API_URL = "http://127.0.0.1:8899"
         
         try:
             print(f"[*] Solicitando navegacao inicial para a pagina de login...")
             res = requests.get(f"{API_URL}/navigate?url={url}", timeout=5)
             if res.status_code != 200:
-                print("[-] O App Solver nao respondeu corretamente.")
+                print(f"[-] O App Solver nao respondeu corretamente. Status: {res.status_code} Resposta: {res.text}")
                 sys.exit(1)
         except Exception as e:
             print(f"[-] O App Solver nao esta rodando no seu celular! Abra o app Tibia Solver e tente de novo. Erro: {e}")

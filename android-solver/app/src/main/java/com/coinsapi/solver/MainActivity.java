@@ -50,13 +50,13 @@ public class MainActivity extends Activity {
 
         webView.loadUrl("https://www.tibia.com/account/?subtopic=accountmanagement");
 
-        server = new WebServer(8080);
+        server = new WebServer(8899);
         try {
             server.start();
-            Toast.makeText(this, "Solver rodando na porta 8080", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Solver rodando na porta 8899", Toast.LENGTH_LONG).show();
         } catch (IOException e) {
             e.printStackTrace();
-            Toast.makeText(this, "Erro na porta 8080", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Erro na porta 8899", Toast.LENGTH_LONG).show();
         }
     }
 
