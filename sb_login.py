@@ -125,156 +125,84 @@ try:
                 sys.exit(1)
 
     else:
-        # MODO TERMUX ADB (CDP Websocket Puro)
-        print("[*] Ambiente Termux detectado. Usando WebSocket CDP puro na porta 9222...")
+        # MODO TERMUX ADB (Firefox Nativo)
+        print("[*] Ambiente Termux detectado. Usando Firefox Nativo no celular...")
         try:
-            import requests
-            import websocket
+            from selenium import webdriver
+            from selenium.webdriver.firefox.options import Options
+            from selenium.webdriver.firefox.service import Service
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.common.keys import Keys
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
         except ImportError:
-            print("[-] Dependencias ausentes! Rode: pip install requests websocket-client")
+            print("[-] Dependencias do Selenium ausentes! Rode: pip install selenium")
             sys.exit(1)
             
-        print("[*] Buscando a pagina ativa no Chrome do Android...")
-        try:
-            resp = requests.get('http://127.0.0.1:9222/json')
-            pages = resp.json()
-        except Exception as e:
-            print(f"[-] Erro ao conectar no Chrome. A porta 9222 ta aberta? O Chrome ta aberto? Erro: {e}")
+        driver_path = '/usr/bin/geckodriver'
+        if not os.path.exists(driver_path):
+            print(f"[-] ERRO: {driver_path} nao encontrado!")
+            print("Siga as instrucoes no painel do agente para baixar o geckodriver")
             sys.exit(1)
             
-        ws_url = None
-        for p in pages:
-            if p.get('type') == 'page' and 'webSocketDebuggerUrl' in p:
-                ws_url = p['webSocketDebuggerUrl']
-                break
-                
-        if not ws_url:
-            print("[-] Nenhuma pagina aberta encontrada no Chrome. Abra uma nova aba vazia no celular!")
-            sys.exit(1)
-            
-        print(f"[*] Conectando via WebSocket no Chrome...")
-        ws = websocket.create_connection(ws_url)
-        msg_id = 0
+        print("[*] Conectando ao Firefox do Android via ADB...")
+        options = Options()
+        options.set_capability('moz:firefoxOptions', {
+            'androidPackage': 'org.mozilla.firefox',
+            'androidDeviceSerial': 'emulator-5554'
+        })
         
-        def send_cmd(method, params=None):
-            global msg_id
-            msg_id += 1
-            msg = {"id": msg_id, "method": method, "params": params or {}}
-            ws.send(json.dumps(msg))
-            while True:
-                resp_str = ws.recv()
-                resp_json = json.loads(resp_str)
-                if resp_json.get("id") == msg_id:
-                    return resp_json
+        service = Service(executable_path=driver_path)
+        driver = webdriver.Firefox(service=service, options=options)
+        wait = WebDriverWait(driver, 45)
         
         print(f"[*] Navegando para {url}")
-        send_cmd("Page.navigate", {"url": url})
+        driver.get(url)
         
         print("[*] Aguardando o campo de email aparecer (espere o Cloudflare passar sozinho)...")
-        email_ready = False
-        for _ in range(60): # Espera ate 60 segundos
-            res = send_cmd("Runtime.evaluate", {
-                "expression": "document.querySelector('input[name=\"loginemail\"]') !== null",
-                "returnByValue": True
-            })
-            if res.get('result', {}).get('result', {}).get('value') == True:
-                email_ready = True
-                break
-            time.sleep(1)
-            
-        if not email_ready:
-            print("[-] Timeout: O campo de email nao apareceu.")
-            sys.exit(1)
-            
-        print("[+] Pagina de login pronta! Inserindo credenciais...")
-        # Usa javascript para preencher e enviar o form
-        fill_js = f"""
-        var email = document.querySelector('input[name="loginemail"]');
-        var pwd = document.querySelector('input[name="loginpassword"]');
-        if (email && pwd) {{
-            email.value = '{email}';
-            pwd.value = '{password}';
-            var btn = document.querySelector('input[name="Submit"]');
-            if(btn) btn.click();
-            else {{
-                var form = pwd.closest('form');
-                if (form) form.submit();
-            }}
-        }}
-        """
-        send_cmd("Runtime.evaluate", {"expression": fill_js})
+        email_input = wait.until(EC.presence_of_element_located((By.NAME, "loginemail")))
+        print("[+] Pagina de login pronta!")
         
-        print("[*] Aguardando confirmacao ou campo TOTP...")
-        is_totp_requested = False
-        is_logged_in = False
-        for _ in range(60):
-            time.sleep(1)
-            res = send_cmd("Runtime.evaluate", {
-                "expression": "document.body.innerHTML.includes('name=\"totp\"') || document.body.innerHTML.includes('Logout')",
-                "returnByValue": True
-            })
-            val = res.get('result', {}).get('result', {}).get('value')
-            if val:
-                res2 = send_cmd("Runtime.evaluate", {
-                    "expression": "document.body.innerHTML.includes('Logout')",
-                    "returnByValue": True
-                })
-                if res2.get('result', {}).get('result', {}).get('value') == True:
-                    is_logged_in = True
-                    break
-                else:
-                    is_totp_requested = True
-                    break
-
-        if is_totp_requested:
+        print("[*] Preenchendo credenciais...")
+        email_input.clear()
+        email_input.send_keys(email)
+        
+        pass_input = driver.find_element(By.NAME, "loginpassword")
+        pass_input.clear()
+        pass_input.send_keys(password)
+        pass_input.send_keys(Keys.RETURN)
+        
+        time.sleep(4)
+        
+        page_source = driver.page_source
+        if 'name="totp"' in page_source or "totp" in page_source:
             print("[*] 2FA (TOTP) solicitado! Gerando token...")
             totp_code = pyotp.TOTP(totp_secret.replace(" ", "").upper()).now()
             print(f"[*] Token gerado: {totp_code}. Inserindo...")
-            totp_js = f"""
-            var t = document.querySelector('input[name="totp"]');
-            if (t) {{
-                t.value = '{totp_code}';
-                var form = t.closest('form');
-                if (form) form.submit();
-            }}
-            """
-            send_cmd("Runtime.evaluate", {"expression": totp_js})
+            totp_input = driver.find_element(By.NAME, "totp")
+            totp_input.clear()
+            totp_input.send_keys(totp_code)
+            totp_input.send_keys(Keys.RETURN)
+            time.sleep(4)
             
-            for _ in range(30):
-                time.sleep(1)
-                res = send_cmd("Runtime.evaluate", {
-                    "expression": "document.body.innerHTML.includes('Logout')",
-                    "returnByValue": True
-                })
-                if res.get('result', {}).get('result', {}).get('value') == True:
-                    is_logged_in = True
-                    break
-                    
-        if is_logged_in:
+        page_source = driver.page_source
+        if "Logout" in page_source:
             print("[+] LOGIN BEM SUCEDIDO!")
             print(f"[*] Navegando ate historico: {history_url}")
-            send_cmd("Page.navigate", {"url": history_url})
-            time.sleep(5) # Aguarda historico carregar
+            driver.get(history_url)
+            time.sleep(5)
             
-            # Pegar todos os cookies do Network
-            print("[*] Extraindo cookies de sessao...")
-            res_cookies = send_cmd("Network.getAllCookies")
-            cookies = res_cookies.get('result', {}).get('cookies', [])
-            
-            if cookies:
-                cookie_parts = [f"{c['name']}={c['value']}" for c in cookies]
-                cookie_string = "; ".join(cookie_parts)
+            cookies = driver.get_cookies()
+            cookie_parts = [f"{c['name']}={c['value']}" for c in cookies]
+            cookie_string = "; ".join(cookie_parts)
 
-                cookie_file_path = os.path.join(SCRIPT_DIR, "session_cookie.txt")
-                with open(cookie_file_path, "w", encoding="utf-8") as f:
-                    f.write(cookie_string)
-                print(f"[+] Cookies de sessao salvos com sucesso em {cookie_file_path}!")
-            else:
-                print("[-] Falha ao extrair cookies da rede.")
+            cookie_file_path = os.path.join(SCRIPT_DIR, "session_cookie.txt")
+            with open(cookie_file_path, "w", encoding="utf-8") as f:
+                f.write(cookie_string)
+            print(f"[+] Cookies de sessao salvos com sucesso em {cookie_file_path}!")
         else:
-            print("[-] Falha no login. O botao de Logout nao foi encontrado.")
-            
-        ws.close()
+            print("[-] Falha no login. Nao encontrei o botao de Logout.")
+            sys.exit(1)
 
 except Exception as e:
     print(f"[-] Error: {e}")
