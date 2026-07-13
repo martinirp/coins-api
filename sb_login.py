@@ -7,14 +7,6 @@ import platform
 import subprocess
 import pyotp
 
-# Imports extras para o modo Termux (Selenium puro)
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-
 # Import para modo Windows
 from seleniumbase import SB
 
@@ -133,80 +125,68 @@ try:
                 sys.exit(1)
 
     else:
-        # MODO TERMUX ADB (Selenium Puro)
-        print("[*] Ambiente Termux detectado. Conectando ao Chrome do Android via ADB (porta 9222)...")
-        from selenium.webdriver.chrome.service import Service
-        import shutil
+        # MODO TERMUX ADB (Playwright Puro via CDP)
+        print("[*] Ambiente Termux detectado. Usando Playwright para conectar na porta 9222...")
         
-        options = Options()
-        # O ChromeDriver sabe se virar com Android sozinho!
-        options.add_experimental_option('androidPackage', 'com.android.chrome')
-        options.add_experimental_option('androidDeviceSerial', 'emulator-5554')
-        
-        # Encontra o chromedriver no sistema (Debian/Termux)
-        driver_path = shutil.which('chromedriver')
-        if not driver_path:
-            # Caso o seleniumbase tenha baixado, procura nele
-            driver_path = shutil.which('uc_driver') or shutil.which('chromedriver', path='/usr/bin:/usr/local/bin:/bin')
-            
-        print(f"[*] Usando ChromeDriver em: {driver_path}")
-        
-        if driver_path:
-            service = Service(executable_path=driver_path)
-            driver = webdriver.Chrome(service=service, options=options)
-        else:
-            print("[-] ERRO: chromedriver nao encontrado! Tentando sem o Service...")
-            driver = webdriver.Chrome(options=options)
-        wait = WebDriverWait(driver, 30)
-        
-        print(f"[*] Navegando para: {url}")
-        driver.get(url)
-        
-        print("[*] Aguardando a pagina carregar (se o Cloudflare parar, resolva no celular manualmente e eu continuo!)")
-        email_input = wait.until(EC.presence_of_element_located((By.NAME, "loginemail")))
-        print("[+] Pagina de login pronta!")
-        
-        print("[*] Preenchendo credenciais...")
-        email_input.clear()
-        email_input.send_keys(email)
-        
-        pass_input = driver.find_element(By.NAME, "loginpassword")
-        pass_input.clear()
-        pass_input.send_keys(password)
-        pass_input.send_keys(Keys.RETURN)
-        
-        # Espera carregar proxima tela (totp ou sucesso)
-        time.sleep(3)
-        
-        page_source = driver.page_source
-        if 'name="totp"' in page_source or "totp" in page_source:
-            print("[*] 2FA (TOTP) solicitado! Gerando token...")
-            totp_code = pyotp.TOTP(totp_secret.replace(" ", "").upper()).now()
-            print(f"[*] Token gerado: {totp_code}. Inserindo...")
-            totp_input = driver.find_element(By.NAME, "totp")
-            totp_input.clear()
-            totp_input.send_keys(totp_code)
-            totp_input.send_keys(Keys.RETURN)
-            time.sleep(3)
-            
-        page_source = driver.page_source
-        if "Logout" in page_source:
-            print("[+] LOGIN BEM SUCEDIDO!")
-            print(f"[*] Navegando ate historico: {history_url}")
-            driver.get(history_url)
-            time.sleep(2) # Aguarda historico carregar um pouco
-            
-            cookies = driver.get_cookies()
-            cookie_parts = [f"{c['name']}={c['value']}" for c in cookies]
-            cookie_string = "; ".join(cookie_parts)
-
-            cookie_file_path = os.path.join(SCRIPT_DIR, "session_cookie.txt")
-            with open(cookie_file_path, "w", encoding="utf-8") as f:
-                f.write(cookie_string)
-            print(f"[+] Cookies de sessao salvos com sucesso em {cookie_file_path}!")
-        else:
-            print("[-] Falha no login. Nao encontrei o botao de Logout.")
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            print("[-] Playwright nao esta instalado! Rode: pip install playwright")
             sys.exit(1)
+
+        with sync_playwright() as p:
+            print("[*] Conectando ao Chrome do celular (CDP)...")
+            try:
+                browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+            except Exception as e:
+                print(f"[-] Erro ao conectar. A porta 9222 esta aberta? O Chrome ta rodando no celular? ({e})")
+                sys.exit(1)
+                
+            context = browser.contexts[0]
+            page = context.pages[0] if context.pages else context.new_page()
+            
+            print(f"[*] Navegando para: {url}")
+            page.goto(url, timeout=60000)
+            
+            print("[*] Aguardando a pagina carregar (se o Cloudflare parar, resolva no celular manualmente e eu continuo!)")
+            page.wait_for_selector('input[name="loginemail"]', timeout=45000)
+            print("[+] Pagina de login pronta!")
+            
+            print("[*] Preenchendo credenciais...")
+            page.fill('input[name="loginemail"]', email)
+            page.fill('input[name="loginpassword"]', password)
+            page.press('input[name="loginpassword"]', 'Enter')
+            
+            # Espera carregar proxima tela (totp ou sucesso)
+            time.sleep(4)
+            
+            content = page.content()
+            if 'name="totp"' in content or "totp" in content:
+                print("[*] 2FA (TOTP) solicitado! Gerando token...")
+                totp_code = pyotp.TOTP(totp_secret.replace(" ", "").upper()).now()
+                print(f"[*] Token gerado: {totp_code}. Inserindo...")
+                page.fill('input[name="totp"]', totp_code)
+                page.press('input[name="totp"]', 'Enter')
+                time.sleep(4)
+                
+            content = page.content()
+            if "Logout" in content:
+                print("[+] LOGIN BEM SUCEDIDO!")
+                print(f"[*] Navegando ate historico: {history_url}")
+                page.goto(history_url, timeout=60000)
+                time.sleep(2) # Aguarda historico carregar um pouco
+                
+                cookies = context.cookies()
+                cookie_parts = [f"{c['name']}={c['value']}" for c in cookies]
+                cookie_string = "; ".join(cookie_parts)
+
+                cookie_file_path = os.path.join(SCRIPT_DIR, "session_cookie.txt")
+                with open(cookie_file_path, "w", encoding="utf-8") as f:
+                    f.write(cookie_string)
+                print(f"[+] Cookies de sessao salvos com sucesso em {cookie_file_path}!")
+            else:
+                print("[-] Falha no login. Nao encontrei o botao de Logout na pagina.")
+                sys.exit(1)
 
 except Exception as e:
     print(f"[-] Error: {e}")
