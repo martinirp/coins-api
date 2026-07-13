@@ -135,10 +135,26 @@ try:
     else:
         # MODO TERMUX ADB (Selenium Puro)
         print("[*] Ambiente Termux detectado. Conectando ao Chrome do Android via ADB (porta 9222)...")
+        from selenium.webdriver.chrome.service import Service
+        import shutil
+        
         options = Options()
         options.debugger_address = "127.0.0.1:9222"
         
-        driver = webdriver.Chrome(options=options)
+        # Encontra o chromedriver no sistema (Debian/Termux)
+        driver_path = shutil.which('chromedriver')
+        if not driver_path:
+            # Caso o seleniumbase tenha baixado, procura nele
+            driver_path = shutil.which('uc_driver') or shutil.which('chromedriver', path='/usr/bin:/usr/local/bin:/bin')
+            
+        print(f"[*] Usando ChromeDriver em: {driver_path}")
+        
+        if driver_path:
+            service = Service(executable_path=driver_path)
+            driver = webdriver.Chrome(service=service, options=options)
+        else:
+            print("[-] ERRO: chromedriver nao encontrado! Tentando sem o Service...")
+            driver = webdriver.Chrome(options=options)
         wait = WebDriverWait(driver, 30)
         
         print(f"[*] Navegando para: {url}")
