@@ -139,7 +139,9 @@ try:
         import shutil
         
         options = Options()
-        options.debugger_address = "127.0.0.1:9222"
+        # O ChromeDriver sabe se virar com Android sozinho!
+        options.add_experimental_option('androidPackage', 'com.android.chrome')
+        options.add_experimental_option('androidDeviceSerial', 'emulator-5554')
         
         # Encontra o chromedriver no sistema (Debian/Termux)
         driver_path = shutil.which('chromedriver')
