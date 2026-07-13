@@ -6,6 +6,7 @@ import shutil
 import platform
 import subprocess
 import pyotp
+import requests
 
 # Import para modo Windows
 from seleniumbase import SB
@@ -125,83 +126,75 @@ try:
                 sys.exit(1)
 
     else:
-        # MODO TERMUX ADB (Firefox Nativo)
-        print("[*] Ambiente Termux detectado. Usando Firefox Nativo no celular...")
+        # MODO TERMUX (APK Nativo Tibia Solver)
+        print("[*] Ambiente Termux detectado. Conectando ao Aplicativo Nativo (SolverApp) via porta 8080...")
+        
+        API_URL = "http://127.0.0.1:8080"
+        
         try:
-            from selenium import webdriver
-            from selenium.webdriver.firefox.options import Options
-            from selenium.webdriver.firefox.service import Service
-            from selenium.webdriver.common.by import By
-            from selenium.webdriver.common.keys import Keys
-            from selenium.webdriver.support.ui import WebDriverWait
-            from selenium.webdriver.support import expected_conditions as EC
-        except ImportError:
-            print("[-] Dependencias do Selenium ausentes! Rode: pip install selenium")
+            print(f"[*] Solicitando navegacao inicial para a pagina de login...")
+            res = requests.get(f"{API_URL}/navigate?url={url}", timeout=5)
+            if res.status_code != 200:
+                print("[-] O App Solver nao respondeu corretamente.")
+                sys.exit(1)
+        except Exception as e:
+            print(f"[-] O App Solver nao esta rodando no seu celular! Abra o app Tibia Solver e tente de novo. Erro: {e}")
             sys.exit(1)
             
-        driver_path = '/usr/bin/geckodriver'
-        if not os.path.exists(driver_path):
-            print(f"[-] ERRO: {driver_path} nao encontrado!")
-            print("Siga as instrucoes no painel do agente para baixar o geckodriver")
-            sys.exit(1)
+        print("[*] Aguardando o Cloudflare carregar no aplicativo nativo (espere 10 segundos)...")
+        time.sleep(15)
+        
+        print("[*] Enviando credenciais para o App injetar na pagina...")
+        js_login = f"""
+        var email = document.querySelector('input[name="loginemail"]');
+        var pwd = document.querySelector('input[name="loginpassword"]');
+        if (email && pwd) {{
+            email.value = '{email}';
+            pwd.value = '{password}';
+            var form = pwd.closest('form');
+            if(form) form.submit();
+        }}
+        """
+        requests.post(f"{API_URL}/inject", data={'js': js_login})
+        
+        print("[*] Aguardando tela de TOTP carregar...")
+        time.sleep(10)
+        
+        print("[*] Gerando e injetando chave TOTP...")
+        totp_code = pyotp.TOTP(totp_secret.replace(" ", "").upper()).now()
+        js_totp = f"""
+        var t = document.querySelector('input[name="totp"]');
+        if (t) {{
+            t.value = '{totp_code}';
+            var form = t.closest('form');
+            if(form) form.submit();
+        }}
+        """
+        requests.post(f"{API_URL}/inject", data={'js': js_totp})
+        
+        print("[*] Aguardando o login ser concluido...")
+        time.sleep(10)
+        
+        print("[*] Navegando para o Historico de Coins...")
+        requests.get(f"{API_URL}/navigate?url={history_url}")
+        time.sleep(8)
+        
+        print("[*] Solicitando a extracao dos cookies fresquinhos diretamente do App...")
+        try:
+            res_cookies = requests.get(f"{API_URL}/solve").json()
+            cookies = res_cookies.get('cookies', '')
             
-        print("[*] Conectando ao Firefox do Android via ADB...")
-        options = Options()
-        options.set_capability('moz:firefoxOptions', {
-            'androidPackage': 'org.mozilla.firefox',
-            'androidDeviceSerial': 'emulator-5554'
-        })
-        
-        service = Service(executable_path=driver_path)
-        driver = webdriver.Firefox(service=service, options=options)
-        wait = WebDriverWait(driver, 45)
-        
-        print(f"[*] Navegando para {url}")
-        driver.get(url)
-        
-        print("[*] Aguardando o campo de email aparecer (espere o Cloudflare passar sozinho)...")
-        email_input = wait.until(EC.presence_of_element_located((By.NAME, "loginemail")))
-        print("[+] Pagina de login pronta!")
-        
-        print("[*] Preenchendo credenciais...")
-        email_input.clear()
-        email_input.send_keys(email)
-        
-        pass_input = driver.find_element(By.NAME, "loginpassword")
-        pass_input.clear()
-        pass_input.send_keys(password)
-        pass_input.send_keys(Keys.RETURN)
-        
-        time.sleep(4)
-        
-        page_source = driver.page_source
-        if 'name="totp"' in page_source or "totp" in page_source:
-            print("[*] 2FA (TOTP) solicitado! Gerando token...")
-            totp_code = pyotp.TOTP(totp_secret.replace(" ", "").upper()).now()
-            print(f"[*] Token gerado: {totp_code}. Inserindo...")
-            totp_input = driver.find_element(By.NAME, "totp")
-            totp_input.clear()
-            totp_input.send_keys(totp_code)
-            totp_input.send_keys(Keys.RETURN)
-            time.sleep(4)
-            
-        page_source = driver.page_source
-        if "Logout" in page_source:
-            print("[+] LOGIN BEM SUCEDIDO!")
-            print(f"[*] Navegando ate historico: {history_url}")
-            driver.get(history_url)
-            time.sleep(5)
-            
-            cookies = driver.get_cookies()
-            cookie_parts = [f"{c['name']}={c['value']}" for c in cookies]
-            cookie_string = "; ".join(cookie_parts)
-
-            cookie_file_path = os.path.join(SCRIPT_DIR, "session_cookie.txt")
-            with open(cookie_file_path, "w", encoding="utf-8") as f:
-                f.write(cookie_string)
-            print(f"[+] Cookies de sessao salvos com sucesso em {cookie_file_path}!")
-        else:
-            print("[-] Falha no login. Nao encontrei o botao de Logout.")
+            if cookies and "tibia.com" in cookies.lower() or len(cookies) > 10:
+                cookie_file_path = os.path.join(SCRIPT_DIR, "session_cookie.txt")
+                with open(cookie_file_path, "w", encoding="utf-8") as f:
+                    f.write(cookies)
+                print(f"[+] LOGIN BEM SUCEDIDO NO APLICATIVO!")
+                print(f"[+] Cookies transferidos com sucesso do App nativo para o Termux: {cookie_file_path}")
+            else:
+                print("[-] O App nao conseguiu capturar os cookies. A pagina de login travou no celular?")
+                sys.exit(1)
+        except Exception as e:
+            print(f"[-] Erro ao pedir os cookies para o aplicativo: {e}")
             sys.exit(1)
 
 except Exception as e:
