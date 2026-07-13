@@ -125,58 +125,143 @@ try:
                 sys.exit(1)
 
     else:
-        # MODO TERMUX ADB (Playwright Puro via CDP)
-        print("[*] Ambiente Termux detectado. Usando Playwright para conectar na porta 9222...")
-        
+        # MODO TERMUX ADB (CDP Websocket Puro)
+        print("[*] Ambiente Termux detectado. Usando WebSocket CDP puro na porta 9222...")
         try:
-            from playwright.sync_api import sync_playwright
+            import requests
+            import websocket
         except ImportError:
-            print("[-] Playwright nao esta instalado! Rode: pip install playwright")
+            print("[-] Dependencias ausentes! Rode: pip install requests websocket-client")
             sys.exit(1)
+            
+        print("[*] Buscando a pagina ativa no Chrome do Android...")
+        try:
+            resp = requests.get('http://127.0.0.1:9222/json')
+            pages = resp.json()
+        except Exception as e:
+            print(f"[-] Erro ao conectar no Chrome. A porta 9222 ta aberta? O Chrome ta aberto? Erro: {e}")
+            sys.exit(1)
+            
+        ws_url = None
+        for p in pages:
+            if p.get('type') == 'page' and 'webSocketDebuggerUrl' in p:
+                ws_url = p['webSocketDebuggerUrl']
+                break
+                
+        if not ws_url:
+            print("[-] Nenhuma pagina aberta encontrada no Chrome. Abra uma nova aba vazia no celular!")
+            sys.exit(1)
+            
+        print(f"[*] Conectando via WebSocket no Chrome...")
+        ws = websocket.create_connection(ws_url)
+        msg_id = 0
+        
+        def send_cmd(method, params=None):
+            nonlocal msg_id
+            msg_id += 1
+            msg = {"id": msg_id, "method": method, "params": params or {}}
+            ws.send(json.dumps(msg))
+            while True:
+                resp_str = ws.recv()
+                resp_json = json.loads(resp_str)
+                if resp_json.get("id") == msg_id:
+                    return resp_json
+        
+        print(f"[*] Navegando para {url}")
+        send_cmd("Page.navigate", {"url": url})
+        
+        print("[*] Aguardando o campo de email aparecer (espere o Cloudflare passar sozinho)...")
+        email_ready = False
+        for _ in range(60): # Espera ate 60 segundos
+            res = send_cmd("Runtime.evaluate", {
+                "expression": "document.querySelector('input[name=\"loginemail\"]') !== null",
+                "returnByValue": True
+            })
+            if res.get('result', {}).get('result', {}).get('value') == True:
+                email_ready = True
+                break
+            time.sleep(1)
+            
+        if not email_ready:
+            print("[-] Timeout: O campo de email nao apareceu.")
+            sys.exit(1)
+            
+        print("[+] Pagina de login pronta! Inserindo credenciais...")
+        # Usa javascript para preencher e enviar o form
+        fill_js = f"""
+        var email = document.querySelector('input[name="loginemail"]');
+        var pwd = document.querySelector('input[name="loginpassword"]');
+        if (email && pwd) {{
+            email.value = '{email}';
+            pwd.value = '{password}';
+            var btn = document.querySelector('input[name="Submit"]');
+            if(btn) btn.click();
+            else {{
+                var form = pwd.closest('form');
+                if (form) form.submit();
+            }}
+        }}
+        """
+        send_cmd("Runtime.evaluate", {"expression": fill_js})
+        
+        print("[*] Aguardando confirmacao ou campo TOTP...")
+        is_totp_requested = False
+        is_logged_in = False
+        for _ in range(60):
+            time.sleep(1)
+            res = send_cmd("Runtime.evaluate", {
+                "expression": "document.body.innerHTML.includes('name=\"totp\"') || document.body.innerHTML.includes('Logout')",
+                "returnByValue": True
+            })
+            val = res.get('result', {}).get('result', {}).get('value')
+            if val:
+                res2 = send_cmd("Runtime.evaluate", {
+                    "expression": "document.body.innerHTML.includes('Logout')",
+                    "returnByValue": True
+                })
+                if res2.get('result', {}).get('result', {}).get('value') == True:
+                    is_logged_in = True
+                    break
+                else:
+                    is_totp_requested = True
+                    break
 
-        with sync_playwright() as p:
-            print("[*] Conectando ao Chrome do celular (CDP)...")
-            try:
-                browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
-            except Exception as e:
-                print(f"[-] Erro ao conectar. A porta 9222 esta aberta? O Chrome ta rodando no celular? ({e})")
-                sys.exit(1)
-                
-            context = browser.contexts[0]
-            page = context.pages[0] if context.pages else context.new_page()
+        if is_totp_requested:
+            print("[*] 2FA (TOTP) solicitado! Gerando token...")
+            totp_code = pyotp.TOTP(totp_secret.replace(" ", "").upper()).now()
+            print(f"[*] Token gerado: {totp_code}. Inserindo...")
+            totp_js = f"""
+            var t = document.querySelector('input[name="totp"]');
+            if (t) {{
+                t.value = '{totp_code}';
+                var form = t.closest('form');
+                if (form) form.submit();
+            }}
+            """
+            send_cmd("Runtime.evaluate", {"expression": totp_js})
             
-            print(f"[*] Navegando para: {url}")
-            page.goto(url, timeout=60000)
+            for _ in range(30):
+                time.sleep(1)
+                res = send_cmd("Runtime.evaluate", {
+                    "expression": "document.body.innerHTML.includes('Logout')",
+                    "returnByValue": True
+                })
+                if res.get('result', {}).get('result', {}).get('value') == True:
+                    is_logged_in = True
+                    break
+                    
+        if is_logged_in:
+            print("[+] LOGIN BEM SUCEDIDO!")
+            print(f"[*] Navegando ate historico: {history_url}")
+            send_cmd("Page.navigate", {"url": history_url})
+            time.sleep(5) # Aguarda historico carregar
             
-            print("[*] Aguardando a pagina carregar (se o Cloudflare parar, resolva no celular manualmente e eu continuo!)")
-            page.wait_for_selector('input[name="loginemail"]', timeout=45000)
-            print("[+] Pagina de login pronta!")
+            # Pegar todos os cookies do Network
+            print("[*] Extraindo cookies de sessao...")
+            res_cookies = send_cmd("Network.getAllCookies")
+            cookies = res_cookies.get('result', {}).get('cookies', [])
             
-            print("[*] Preenchendo credenciais...")
-            page.fill('input[name="loginemail"]', email)
-            page.fill('input[name="loginpassword"]', password)
-            page.press('input[name="loginpassword"]', 'Enter')
-            
-            # Espera carregar proxima tela (totp ou sucesso)
-            time.sleep(4)
-            
-            content = page.content()
-            if 'name="totp"' in content or "totp" in content:
-                print("[*] 2FA (TOTP) solicitado! Gerando token...")
-                totp_code = pyotp.TOTP(totp_secret.replace(" ", "").upper()).now()
-                print(f"[*] Token gerado: {totp_code}. Inserindo...")
-                page.fill('input[name="totp"]', totp_code)
-                page.press('input[name="totp"]', 'Enter')
-                time.sleep(4)
-                
-            content = page.content()
-            if "Logout" in content:
-                print("[+] LOGIN BEM SUCEDIDO!")
-                print(f"[*] Navegando ate historico: {history_url}")
-                page.goto(history_url, timeout=60000)
-                time.sleep(2) # Aguarda historico carregar um pouco
-                
-                cookies = context.cookies()
+            if cookies:
                 cookie_parts = [f"{c['name']}={c['value']}" for c in cookies]
                 cookie_string = "; ".join(cookie_parts)
 
@@ -185,8 +270,11 @@ try:
                     f.write(cookie_string)
                 print(f"[+] Cookies de sessao salvos com sucesso em {cookie_file_path}!")
             else:
-                print("[-] Falha no login. Nao encontrei o botao de Logout na pagina.")
-                sys.exit(1)
+                print("[-] Falha ao extrair cookies da rede.")
+        else:
+            print("[-] Falha no login. O botao de Logout nao foi encontrado.")
+            
+        ws.close()
 
 except Exception as e:
     print(f"[-] Error: {e}")
