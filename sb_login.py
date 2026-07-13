@@ -8,10 +8,7 @@ import subprocess
 import pyotp
 from seleniumbase import SB
 
-
-
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-
 
 def resolve_env_path(env_path):
     if os.path.isabs(env_path):
@@ -48,77 +45,8 @@ if not email or not password or not totp_secret:
 url = "https://www.tibia.com/account/?subtopic=accountmanagement"
 
 is_windows = os.name == 'nt'
-xvfb_proc = None
-xvfb_ok = False
 
-if not is_windows:
-    DISPLAY_NUM = os.environ.get("DISPLAY", ":99")
-    if not DISPLAY_NUM.startswith(":"):
-        DISPLAY_NUM = ":99"
-        
-    def start_xvfb():
-        global xvfb_proc
-        if os.environ.get("DISPLAY"):
-            print(f"[*] DISPLAY já configurado: {os.environ.get('DISPLAY')}")
-            return True
-        try:
-            subprocess.run(["pkill", "-f", f"Xvfb {DISPLAY_NUM}"], capture_output=True)
-            time.sleep(0.5)
-            lock_file = f"/tmp/.X{DISPLAY_NUM[1:]}-lock"
-            if os.path.exists(lock_file):
-                os.remove(lock_file)
-            xvfb_proc = subprocess.Popen(
-                ["Xvfb", DISPLAY_NUM, "-screen", "0", "1280x800x24", "-ac"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
-            time.sleep(0.5)
-            os.environ["DISPLAY"] = DISPLAY_NUM
-            print(f"[+] Xvfb iniciado no display {DISPLAY_NUM}")
-            
-            if shutil.which("x11vnc"):
-                subprocess.Popen(
-                    ["x11vnc", "-display", DISPLAY_NUM, "-nopw", "-listen", "0.0.0.0", "-xkb", "-forever"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
-                )
-                print("[+] Stream VNC iniciado na porta 5900 (Acesso via IP:5900)")
-            else:
-                print("[-] x11vnc nao encontrado. Instale com: apt install x11vnc")
-                
-            return True
-        except FileNotFoundError:
-            print("[-] Xvfb não encontrado. Instale com: apt install xvfb")
-            return False
-        except Exception as e:
-            print(f"[-] Falha ao iniciar Xvfb: {e}")
-            return False
-
-    def stop_xvfb():
-        global xvfb_proc
-        if xvfb_proc:
-            xvfb_proc.terminate()
-            xvfb_proc = None
-            print("[*] Xvfb encerrado.")
-
-    xvfb_ok = start_xvfb()
-    if not xvfb_ok:
-        print("[-] Continuando sem Xvfb — pode falhar no Cloudflare.")
-else:
-    def stop_xvfb():
-        pass
-
-browser_binary = None
-for candidate in ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser"]:
-    if shutil.which(candidate):
-        browser_binary = candidate
-        break
-if browser_binary:
-    print(f"[*] Browser detectado para SeleniumBase: {browser_binary}")
-else:
-    print("[-] Nenhum browser Chrome/Chromium detectado. Verifique se o Chromium está instalado no Debian do PRoot.")
-
-print(f"[*] Iniciando SeleniumBase UC Mode para {url}...")
+print(f"[*] Iniciando SeleniumBase para {url}...")
 
 try:
     if is_windows:
@@ -128,18 +56,18 @@ try:
             browser="chrome"
         )
     else:
+        # Termux ADB Mode
+        print("[*] Ambiente Termux detectado. Tentando conectar ao Chrome do Android via ADB (porta 9222)...")
         sb_context = SB(
-            uc=True,
-            headless=not xvfb_ok,
-            browser="chrome",
-            chromium_arg="--no-sandbox,--disable-dev-shm-usage,--use-gl=swiftshader,--ignore-gpu-blocklist,--window-size=1280,800,--disable-blink-features=AutomationControlled,--disable-features=IsolateOrigins,site-per-process",
-            agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            debugger_address="127.0.0.1:9222"
         )
         
     with sb_context as sb:
         print("[*] Acessando a pagina do Tibia...")
-        # reconnect_time=10: dá mais tempo ao Cloudflare para auto-verificar o browser
-        sb.uc_open_with_reconnect(url, reconnect_time=10)
+        if is_windows:
+            sb.uc_open_with_reconnect(url, reconnect_time=10)
+        else:
+            sb.open(url) # Normal open for Android Chrome
 
         print("[*] Verificando se o Cloudflare Turnstile apareceu...")
         try:
@@ -164,7 +92,7 @@ try:
             except Exception as e:
                 print(f"[-] Erro no turnstile_solver: {e}")
         else:
-            print("[-] turnstile_solver não instalado. Rode: pip install turnstile_solver opencv-python")
+            print("[-] turnstile_solver não instalado. Tentando método nativo...")
             try:
                 if hasattr(sb, 'uc_gui_handle_captcha'):
                     sb.uc_gui_handle_captcha()
@@ -274,5 +202,3 @@ try:
 
 except Exception as e:
     print(f"[-] Error: {e}")
-finally:
-    stop_xvfb()
