@@ -77,7 +77,7 @@ public class MainActivity extends Activity {
             if ("/solve".equals(uri)) {
                 String cookies = CookieManager.getInstance().getCookie("https://www.tibia.com");
                 if (cookies == null) cookies = "";
-                return newFixedLengthResponse(Response.Status.OK, "application/json", "{\\"cookies\\": \\"" + cookies + "\\"}");
+                return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"cookies\": \"" + cookies + "\"}");
             }
             
             if ("/navigate".equals(uri)) {
