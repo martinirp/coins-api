@@ -31,6 +31,17 @@ public class MainActivity extends Activity {
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setLoadWithOverviewMode(true);
+        settings.setUseWideViewPort(true);
+        settings.setSupportZoom(true);
+        settings.setBuiltInZoomControls(true);
+        settings.setDisplayZoomControls(false);
+        
+        // Spoofing the User-Agent to look like a real mobile Chrome, not a WebView
+        String defaultUA = settings.getUserAgentString();
+        String fakeUA = defaultUA.replace("; wv", "").replace("Version/4.0 ", "");
+        settings.setUserAgentString(fakeUA);
         
         CookieManager.getInstance().setAcceptCookie(true);
         if (android.os.Build.VERSION.SDK_INT >= 21) {
