@@ -127,7 +127,7 @@ try:
 
     else:
         # MODO TERMUX (APK Nativo Tibia Solver)
-        print("[*] Ambiente Termux detectado. Conectando ao Aplicativo Nativo (SolverApp) via porta 8080...")
+        print("[*] Ambiente Termux detectado. Conectando ao Aplicativo Nativo (SolverApp) via porta 8899...")
         
         API_URL = "http://127.0.0.1:8899"
         
