@@ -10,10 +10,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
-import org.nanohttpd.protocols.http.IHTTPSession;
-import org.nanohttpd.protocols.http.NanoHTTPD;
-import org.nanohttpd.protocols.http.response.Response;
-import org.nanohttpd.protocols.http.request.Method;
+import fi.iki.elonen.NanoHTTPD;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -80,13 +77,13 @@ public class MainActivity extends Activity {
             if ("/solve".equals(uri)) {
                 String cookies = CookieManager.getInstance().getCookie("https://www.tibia.com");
                 if (cookies == null) cookies = "";
-                return Response.newFixedLengthResponse(org.nanohttpd.protocols.http.response.Status.OK, "application/json", "{\"cookies\": \"" + cookies + "\"}");
+                return newFixedLengthResponse(Response.Status.OK, "application/json", "{\\"cookies\\": \\"" + cookies + "\\"}");
             }
             
             if ("/navigate".equals(uri)) {
                 final String url = session.getParameters().get("url").get(0);
                 runOnUiThread(() -> webView.loadUrl(url));
-                return Response.newFixedLengthResponse("OK");
+                return newFixedLengthResponse("OK");
             }
             
             if ("/inject".equals(uri) && Method.POST.equals(session.getMethod())) {
@@ -95,13 +92,13 @@ public class MainActivity extends Activity {
                     session.parseBody(files);
                     final String js = session.getParameters().get("js").get(0);
                     runOnUiThread(() -> webView.evaluateJavascript(js, null));
-                    return Response.newFixedLengthResponse("OK");
+                    return newFixedLengthResponse("OK");
                 } catch (Exception e) {
-                    return Response.newFixedLengthResponse("Error");
+                    return newFixedLengthResponse("Error");
                 }
             }
             
-            return Response.newFixedLengthResponse("API do Solver Ativa");
+            return newFixedLengthResponse("API do Solver Ativa");
         }
     }
 }
