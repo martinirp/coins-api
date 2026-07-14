@@ -38,10 +38,17 @@ public class MainActivity extends Activity {
         settings.setBuiltInZoomControls(true);
         settings.setDisplayZoomControls(false);
         
-        // Spoofing the User-Agent to look like a real mobile Chrome, not a WebView
-        String defaultUA = settings.getUserAgentString();
-        String fakeUA = defaultUA.replace("; wv", "").replace("Version/4.0 ", "");
+        // Spoofing the User-Agent to look like a real desktop Chrome
+        String fakeUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36";
         settings.setUserAgentString(fakeUA);
+        settings.setMediaPlaybackRequiresUserGesture(false);
+        
+        // Hide webdriver and other WebView traits
+        webView.evaluateJavascript(
+            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});" +
+            "window.chrome = { runtime: {} };", 
+            null
+        );
         
         CookieManager.getInstance().setAcceptCookie(true);
         if (android.os.Build.VERSION.SDK_INT >= 21) {
