@@ -251,7 +251,7 @@ def main():
         email_el.send_keys(email)
         pwd_el.clear()
         pwd_el.send_keys(password)
-        pwd_el.send_keys(Keys.Return)
+        pwd_el.send_keys(Keys.RETURN)
 
         print("[*] Aguardando TOTP ou Logout...", flush=True)
         is_totp = False
@@ -278,7 +278,7 @@ def main():
             totp_el = driver.find_element(By.CSS_SELECTOR, 'input[name="totp"]')
             totp_el.clear()
             totp_el.send_keys(code)
-            totp_el.send_keys(Keys.Return)
+            totp_el.send_keys(Keys.RETURN)
 
         print("[*] Aguardando conclusao do login (Logout)...", flush=True)
         ok = False
