@@ -54,6 +54,8 @@ function renewSession() {
     return stdout.includes('Cookies de sessao salvos com sucesso');
   } catch (err) {
     console.error(`[-] Erro ao executar sb_login.py: ${err.message}`);
+    if (err.stdout) console.error(`[stdout]\n${err.stdout}`);
+    if (err.stderr) console.error(`[stderr]\n${err.stderr}`);
     return false;
   }
 }
