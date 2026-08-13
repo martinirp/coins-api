@@ -21,19 +21,31 @@ Este microserviço automatiza o login (contornando proteções como o Cloudflare
    npm install
    ```
 
-### No Linux / Termux (PRoot Debian)
-1. **Instalar pacotes do sistema**:
+### No Linux / Termux (PRoot Debian) — armhf (Android 32-bit)
+> O `StealthyFetcher` do Scrapling não instala em armv7l (a Playwright não publica wheels 32-bit).
+> Por isso o login usa `undetected-chromedriver` + `chromium` do apt, e o scraper usa `curl_cffi` (que tem wheel armv7l).
+
+1. **Instalar pacotes do sistema** (Debian Trixie usa sufixo `t64` em algumas libs):
    ```bash
    apt update
-   apt install -y python3 python3-pip chromium chromium-driver xvfb git nodejs npm
+   apt install -y python3 python3-pip chromium chromium-driver git nodejs npm \
+     libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 \
+     libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 \
+     libpango-1.0-0 libcairo2 libasound2t64
    ```
 2. **Instalar dependências do Python**:
    ```bash
-   pip3 install pyotp beautifulsoup4 requests seleniumbase --break-system-packages
+   pip3 install undetected-chromedriver pyotp beautifulsoup4 curl_cffi --break-system-packages
    ```
 3. **Instalar dependências do Node**:
    ```bash
    npm install
+   ```
+4. **Validar o Chromium no proot** (opcional, mas recomendado):
+   ```bash
+   python3 test_selenium.py
+   # SPIKE OK  -> Chromium armhf abriu e o CF foi bypassado; pode iniciar a API.
+   # SPIKE FALHOU -> Cloudflare bloqueou em headless; verifique libs/versao do chromium.
    ```
 
 ---

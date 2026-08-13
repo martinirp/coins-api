@@ -3,8 +3,8 @@ import sys
 import json
 import hashlib
 import re
+from curl_cffi import requests
 from bs4 import BeautifulSoup
-from scrapling.fetchers import Fetcher
 
 
 def parse_cookie_str(cookie_str):
@@ -31,19 +31,23 @@ def main():
 
     cookies = parse_cookie_str(cookie_str)
 
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    }
+
     try:
-        response = Fetcher.get(
+        response = requests.get(
             url,
+            headers=headers,
             cookies=cookies,
             impersonate="chrome",
-            stealthy_headers=True,
             timeout=25,
         )
-        if response.status != 200:
-            print(json.dumps({"error": f"HTTP {response.status}"}), flush=True)
+        if response.status_code != 200:
+            print(json.dumps({"error": f"HTTP {response.status_code}"}), flush=True)
             sys.exit(1)
 
-        html = response.body.decode("utf-8", errors="replace")
+        html = response.text
 
         if "loginemail" in html or "Log In" in html or "forgot_password" in html:
             print(json.dumps({"error": "session_expired"}), flush=True)

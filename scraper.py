@@ -3,8 +3,9 @@ import sys
 import json
 import hashlib
 import re
+import shutil
+from curl_cffi import requests
 from bs4 import BeautifulSoup
-from scrapling.fetchers import Fetcher
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -33,21 +34,25 @@ def main():
     print(f"[scraper] Cookie carregado ({len(cookie_str)} chars)", file=sys.stderr, flush=True)
     cookies = parse_cookie_str(cookie_str)
 
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    }
+
     try:
-        print("[scraper] Iniciando requisicao HTTP (scrapling Fetcher)...", file=sys.stderr, flush=True)
-        response = Fetcher.get(
+        print("[scraper] Iniciando requisicao HTTP (curl_cffi)...", file=sys.stderr, flush=True)
+        response = requests.get(
             url,
+            headers=headers,
             cookies=cookies,
             impersonate="chrome",
-            stealthy_headers=True,
             timeout=25,
         )
-        print(f"[scraper] Resposta recebida: HTTP {response.status}", file=sys.stderr, flush=True)
-        if response.status != 200:
-            print(json.dumps({"error": f"HTTP {response.status}"}), flush=True)
+        print(f"[scraper] Resposta recebida: HTTP {response.status_code}", file=sys.stderr, flush=True)
+        if response.status_code != 200:
+            print(json.dumps({"error": f"HTTP {response.status_code}"}), flush=True)
             sys.exit(1)
 
-        html = response.body.decode("utf-8", errors="replace")
+        html = response.text
 
         if "loginemail" in html or "Log In" in html or "forgot_password" in html:
             print(json.dumps({"error": "session_expired"}), flush=True)
