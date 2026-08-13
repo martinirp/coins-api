@@ -215,6 +215,77 @@ def try_click_turnstile(driver, timeout=25):
     return bool(driver.find_elements(By.CSS_SELECTOR, 'input[name="loginemail"]'))
 
 
+def solve_turnstile_token(driver, timeout=20):
+    """Tenta resolver o widget Turnstile (dentro do form) e retorna o token, se gerado."""
+    from selenium.webdriver.common.by import By
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            token_input = driver.find_elements(By.CSS_SELECTOR, 'input[name="cf-turnstile-response"]')
+            if token_input and token_input[0].get_attribute("value"):
+                return token_input[0].get_attribute("value")
+        except Exception:
+            pass
+
+        try:
+            for frame in driver.find_elements(By.TAG_NAME, "iframe"):
+                try:
+                    src = frame.get_attribute("src") or ""
+                except Exception:
+                    src = ""
+                if "challenges.cloudflare.com" in src or "turnstile" in src:
+                    try:
+                        driver.switch_to.frame(frame)
+                        for sel in ('input[type="checkbox"]', ".ctp-checkbox-label", "#challenge-stage", "#spr1"):
+                            els = driver.find_elements(By.CSS_SELECTOR, sel)
+                            if els:
+                                try:
+                                    els[0].click()
+                                except Exception:
+                                    pass
+                                break
+                    except Exception:
+                        pass
+                    finally:
+                        try:
+                            driver.switch_to.default_content()
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+        try:
+            token_input = driver.find_elements(By.CSS_SELECTOR, 'input[name="cf-turnstile-response"]')
+            if token_input and token_input[0].get_attribute("value"):
+                return token_input[0].get_attribute("value")
+        except Exception:
+            pass
+
+        time.sleep(1)
+    return None
+
+
+def dump_error_hints(driver):
+    """Procura elementos de texto com palavras de erro/captcha na pagina."""
+    from selenium.webdriver.common.by import By
+
+    for el in driver.find_elements(
+        By.XPATH, "//*[self::div or self::span or self::p or self::td or self::h1 or self::h2 or self::label]"
+    ):
+        try:
+            txt = (el.text or "").strip()
+        except Exception:
+            txt = ""
+        low = txt.lower()
+        if txt and any(k in low for k in ("captcha", "invalid", "error", "try again", "incorrect", "wrong", "blocked", "turnstile")):
+            try:
+                cls = el.get_attribute("class")
+            except Exception:
+                cls = None
+            print(f"[hint] <{el.tag_name} class={cls!r}> {txt[:200]!r}", flush=True)
+
+
 def main():
     ensure_display()
 
@@ -279,6 +350,11 @@ def main():
         email_el.send_keys(email)
         pwd_el.clear()
         pwd_el.send_keys(password)
+
+        token = solve_turnstile_token(driver, timeout=20)
+        print(f"[*] Token Turnstile no form apos preenchimento: {'PRESENTE' if token else 'AUSENTE'}", flush=True)
+        snapshot(driver, "sb_before_submit")
+
         pwd_el.send_keys(Keys.RETURN)
         snapshot(driver, "sb_after_submit")
 
@@ -327,6 +403,7 @@ def main():
         snapshot(driver, "sb_final")
 
         if not ok:
+            dump_error_hints(driver)
             try:
                 tail = driver.page_source[-300:]
             except Exception:
