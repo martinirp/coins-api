@@ -6,8 +6,6 @@ import re
 from bs4 import BeautifulSoup
 from scrapling.fetchers import Fetcher
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-
 
 def parse_cookie_str(cookie_str):
     cookies = {}
@@ -20,7 +18,8 @@ def parse_cookie_str(cookie_str):
 
 
 def main():
-    cookie_path = os.path.join(SCRIPT_DIR, "session_cookie.txt")
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    cookie_path = os.path.join(base_dir, "session_cookie.txt")
     url = "https://www.tibia.com/account/?subtopic=accountmanagement&page=tibiacoinshistory"
 
     if not os.path.exists(cookie_path):
@@ -30,11 +29,9 @@ def main():
     with open(cookie_path, "r", encoding="utf-8") as f:
         cookie_str = f.read().strip()
 
-    print(f"[scraper] Cookie carregado ({len(cookie_str)} chars)", file=sys.stderr, flush=True)
     cookies = parse_cookie_str(cookie_str)
 
     try:
-        print("[scraper] Iniciando requisicao HTTP (scrapling Fetcher)...", file=sys.stderr, flush=True)
         response = Fetcher.get(
             url,
             cookies=cookies,
@@ -42,7 +39,6 @@ def main():
             stealthy_headers=True,
             timeout=25,
         )
-        print(f"[scraper] Resposta recebida: HTTP {response.status}", file=sys.stderr, flush=True)
         if response.status != 200:
             print(json.dumps({"error": f"HTTP {response.status}"}), flush=True)
             sys.exit(1)
