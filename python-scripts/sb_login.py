@@ -266,6 +266,15 @@ def solve_turnstile_token(driver, timeout=20):
     return None
 
 
+def page_has_login_error(driver):
+    """True se o servidor rejeitou o login (erro de email/senha na pagina)."""
+    try:
+        src = driver.page_source
+    except Exception:
+        return False
+    return ("wrong password" in src.lower()) or ("error has occurred" in src.lower())
+
+
 def dump_error_hints(driver):
     """Procura elementos de texto com palavras de erro/captcha na pagina."""
     from selenium.webdriver.common.by import By
@@ -371,6 +380,7 @@ def main():
 
         print("[*] Aguardando TOTP ou Logout...", flush=True)
         is_totp = False
+        rejected = False
         deadline = time.time() + 30
         while time.time() < deadline:
             try:
@@ -382,9 +392,17 @@ def main():
                 break
             if "Logout" in src:
                 break
+            if page_has_login_error(driver):
+                rejected = True
+                break
             try_click_turnstile(driver, timeout=1)
             time.sleep(0.2)
         snapshot(driver, "sb_after_wait_totp")
+
+        if rejected:
+            dump_error_hints(driver)
+            print("[-] Login REJEITADO: email ou senha invalidos. Confira o .env e o status da conta.", flush=True)
+            sys.exit(1)
 
         if is_totp:
             print("[*] 2FA (TOTP) solicitado! Gerando token...", flush=True)
