@@ -28,11 +28,13 @@ Este microserviço automatiza o login (contornando proteções como o Cloudflare
 1. **Instalar pacotes do sistema** (Debian Trixie usa sufixo `t64` em algumas libs):
    ```bash
    apt update
-   apt install -y python3 python3-pip chromium chromium-driver git nodejs npm \
+   apt install -y python3 python3-pip chromium chromium-driver xvfb git nodejs npm \
      libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 \
      libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 \
      libpango-1.0-0 libcairo2 libasound2t64
    ```
+   > O `xvfb` é obrigatório: sem display, o `sb_login.py` se auto-relança sob `xvfb-run`
+   > (display virtual) porque o Turnstile interativo do login é detectado em headless puro.
 2. **Instalar dependências do Python**:
    ```bash
    pip3 install undetected-chromedriver pyotp beautifulsoup4 curl_cffi --break-system-packages

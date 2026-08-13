@@ -1,6 +1,5 @@
 import os
 import sys
-import json
 import time
 import shutil
 import pyotp
@@ -31,6 +30,18 @@ def load_env(env_path):
                             val = val[1:-1]
                         env_vars[key] = val
     return env_vars
+
+
+def ensure_display():
+    """Se nao houver display, relanca o proprio script sob Xvfb (melhor fingerprint pro Turnstile)."""
+    if os.environ.get("DISPLAY"):
+        return
+    xvfb = shutil.which("xvfb-run")
+    if xvfb:
+        print("[*] Sem DISPLAY. Reiniciando sob Xvfb (display virtual)...", flush=True)
+        os.execv(xvfb, [xvfb, "-a", sys.executable] + sys.argv)
+    else:
+        print("[*] Sem DISPLAY e sem xvfb-run. Seguindo em headless puro...", flush=True)
 
 
 def find_chromium_bin():
@@ -65,6 +76,7 @@ def make_driver():
 
     print(f"[*] Chromium: {chromium_bin}", flush=True)
     print(f"[*] Chromedriver: {chromedriver_bin}", flush=True)
+    print(f"[*] DISPLAY={os.environ.get('DISPLAY')!r}", flush=True)
 
     options = uc.ChromeOptions()
     options.binary_location = chromium_bin
@@ -81,7 +93,10 @@ def make_driver():
             options.add_argument(arg)
         except Exception:
             pass
-    options.add_argument("--headless=new")
+
+    has_display = bool(os.environ.get("DISPLAY"))
+    if not has_display:
+        options.add_argument("--headless=new")
 
     kwargs = dict(
         options=options,
@@ -119,7 +134,63 @@ def wait_for(driver, css, timeout=45, state="present"):
     return WebDriverWait(driver, timeout).until(cond)
 
 
+def try_click_turnstile(driver, timeout=25):
+    """Procura o iframe do Turnstile e clica no checkbox, se presente. Retorna True se o formulario aparecer."""
+    from selenium.webdriver.common.by import By
+
+    deadline = time.time() + timeout
+    clicked = False
+    while time.time() < deadline:
+        try:
+            if driver.find_elements(By.CSS_SELECTOR, 'input[name="loginemail"]'):
+                return True
+
+            for frame in driver.find_elements(By.TAG_NAME, "iframe"):
+                try:
+                    src = frame.get_attribute("src") or ""
+                except Exception:
+                    src = ""
+                if "challenges.cloudflare.com" in src or "turnstile" in src:
+                    try:
+                        driver.switch_to.frame(frame)
+                        selectors = [
+                            'input[type="checkbox"]',
+                            "#challenge-stage input[type='checkbox']",
+                            ".ctp-checkbox-label",
+                            "label[for=challenge]",
+                            "#spr1",
+                            "#challenge-stage",
+                        ]
+                        for sel in selectors:
+                            els = driver.find_elements(By.CSS_SELECTOR, sel)
+                            if els:
+                                try:
+                                    els[0].click()
+                                except Exception:
+                                    pass
+                                clicked = True
+                                break
+                    except Exception:
+                        pass
+                    finally:
+                        try:
+                            driver.switch_to.default_content()
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+        if clicked and driver.find_elements(By.CSS_SELECTOR, 'input[name="loginemail"]'):
+            return True
+
+        time.sleep(1)
+
+    return bool(driver.find_elements(By.CSS_SELECTOR, 'input[name="loginemail"]'))
+
+
 def main():
+    ensure_display()
+
     env = load_env(".env")
     email = env.get("TIBIA_EMAIL")
     password = env.get("TIBIA_PASSWORD")
@@ -131,31 +202,45 @@ def main():
 
     login_url = "https://www.tibia.com/account/?subtopic=accountmanagement"
 
-    print(f"[*] Iniciando login headless (undetected-chromedriver) em {login_url}...", flush=True)
+    print(f"[*] Iniciando login em {login_url}...", flush=True)
 
     driver = make_driver()
     try:
-        stealh_ok = False
         try:
             stealth(driver)
-            stealh_ok = True
         except Exception as e:
             print(f"[*] stealth patch aviso: {e}", flush=True)
 
         print("[*] Abrindo pagina de login...", flush=True)
         driver.get(login_url)
 
-        print("[*] Aguardando Cloudflare交办 + formulario...", flush=True)
-        try:
-            wait_for(driver, 'input[name="loginemail"]', timeout=60, state="present")
-            print("[+] Pagina de login carregada.", flush=True)
-        except Exception:
+        print("[*] Aguardando Cloudflare/Turnstile + formulario...", flush=True)
+        from selenium.webdriver.common.by import By
+
+        form_ok = False
+        for attempt in range(1, 5):
+            if driver.find_elements(By.CSS_SELECTOR, 'input[name="loginemail"]'):
+                form_ok = True
+                break
+            print(f"[*] Tentativa {attempt}: procurando/clicando Turnstile...", flush=True)
+            try_click_turnstile(driver, timeout=30)
+            if driver.find_elements(By.CSS_SELECTOR, 'input[name="loginemail"]'):
+                form_ok = True
+                break
+            if attempt < 4:
+                print("[*] Relendo a pagina...", flush=True)
+                driver.get(login_url)
+                time.sleep(3)
+
+        if not form_ok:
             try:
                 html = driver.page_source[:500]
             except Exception:
                 html = ""
-            print("[-] Timeout waiting login form. Inicio HTML:", html, flush=True)
+            print("[-] Formulario de login nao apareceu. Inicio HTML:", html, flush=True)
             raise RuntimeError("Formulario de login nao apareceu (possivel bloqueio Cloudflare)")
+
+        print("[+] Pagina de login carregada.", flush=True)
 
         from selenium.webdriver.common.by import By
         from selenium.webdriver.common.keys import Keys
