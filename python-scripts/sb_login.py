@@ -135,7 +135,7 @@ def wait_for(driver, css, timeout=45, state="present"):
 
 
 def snapshot(driver, name):
-    """Salva screenshot + loga URL/title para depuracao."""
+    """Salva screenshot + dump HTML + loga URL/title para depuracao."""
     try:
         title = (driver.title or "").strip()
     except Exception:
@@ -151,6 +151,14 @@ def snapshot(driver, name):
         print(f"[snap] {name}.png salvo em {path}", flush=True)
     except Exception as e:
         print(f"[snap] falha ao salvar {name}.png: {e}", flush=True)
+    try:
+        html = driver.page_source
+        html_path = os.path.join(SCRIPT_DIR, name + ".html")
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(html)
+        print(f"[snap] {name}.html salvo em {html_path} ({len(html)} chars)", flush=True)
+    except Exception as e:
+        print(f"[snap] falha ao salvar {name}.html: {e}", flush=True)
 
 
 def try_click_turnstile(driver, timeout=25):
