@@ -134,6 +134,25 @@ def wait_for(driver, css, timeout=45, state="present"):
     return WebDriverWait(driver, timeout).until(cond)
 
 
+def snapshot(driver, name):
+    """Salva screenshot + loga URL/title para depuracao."""
+    try:
+        title = (driver.title or "").strip()
+    except Exception:
+        title = "<erro>"
+    try:
+        url = driver.current_url
+    except Exception:
+        url = "<erro>"
+    print(f"[snap] {name}: url={url!r} title={title!r}", flush=True)
+    try:
+        path = os.path.join(SCRIPT_DIR, name + ".png")
+        driver.save_screenshot(path)
+        print(f"[snap] {name}.png salvo em {path}", flush=True)
+    except Exception as e:
+        print(f"[snap] falha ao salvar {name}.png: {e}", flush=True)
+
+
 def try_click_turnstile(driver, timeout=25):
     """Procura o iframe do Turnstile e clica no checkbox, se presente. Retorna True se o formulario aparecer."""
     from selenium.webdriver.common.by import By
@@ -241,6 +260,7 @@ def main():
             raise RuntimeError("Formulario de login nao apareceu (possivel bloqueio Cloudflare)")
 
         print("[+] Pagina de login carregada.", flush=True)
+        snapshot(driver, "sb_login_page")
 
         from selenium.webdriver.common.by import By
         from selenium.webdriver.common.keys import Keys
@@ -252,6 +272,7 @@ def main():
         pwd_el.clear()
         pwd_el.send_keys(password)
         pwd_el.send_keys(Keys.RETURN)
+        snapshot(driver, "sb_after_submit")
 
         print("[*] Aguardando TOTP ou Logout...", flush=True)
         is_totp = False
@@ -266,7 +287,9 @@ def main():
                 break
             if "Logout" in src:
                 break
+            try_click_turnstile(driver, timeout=1)
             time.sleep(0.2)
+        snapshot(driver, "sb_after_wait_totp")
 
         if is_totp:
             print("[*] 2FA (TOTP) solicitado! Gerando token...", flush=True)
@@ -279,6 +302,7 @@ def main():
             totp_el.clear()
             totp_el.send_keys(code)
             totp_el.send_keys(Keys.RETURN)
+            snapshot(driver, "sb_after_totp_submit")
 
         print("[*] Aguardando conclusao do login (Logout)...", flush=True)
         ok = False
@@ -290,7 +314,9 @@ def main():
                     break
             except Exception:
                 pass
+            try_click_turnstile(driver, timeout=1)
             time.sleep(0.2)
+        snapshot(driver, "sb_final")
 
         if not ok:
             try:
