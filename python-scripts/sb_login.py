@@ -351,8 +351,19 @@ def main():
         pwd_el.clear()
         pwd_el.send_keys(password)
 
-        token = solve_turnstile_token(driver, timeout=20)
-        print(f"[*] Token Turnstile no form apos preenchimento: {'PRESENTE' if token else 'AUSENTE'}", flush=True)
+        masked = f"{password[:2]}***{password[-2:]}" if len(password) > 4 else "***"
+        print(f"[*] Credencial enviada: email={email!r} senha_len={len(password)} senha={masked!r}", flush=True)
+
+        has_cf = any(
+            "challenges.cloudflare.com" in (f.get_attribute("src") or "")
+            or "turnstile" in (f.get_attribute("src") or "")
+            for f in driver.find_elements(By.TAG_NAME, "iframe")
+        )
+        if has_cf:
+            token = solve_turnstile_token(driver, timeout=20)
+            print(f"[*] Turnstile no form: {'PRESENTE' if token else 'FALHOU'}", flush=True)
+        else:
+            print("[*] Sem widget Turnstile no form (scan rapido).", flush=True)
         snapshot(driver, "sb_before_submit")
 
         pwd_el.send_keys(Keys.RETURN)
